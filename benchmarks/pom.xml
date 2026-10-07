@@ -11,8 +11,7 @@
 
     <artifactId>sched-benchmarks</artifactId>
     <description>
-        Microbenchmarks con JMH, equivalentes a los de criterion en Rust
-        (solver/benches y simulation/benches).
+        Microbenchmarks con JMH del solver y de la búsqueda en el catálogo.
         Ejecutar: java -jar benchmarks/target/benchmarks.jar
     </description>
 

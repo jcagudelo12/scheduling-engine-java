@@ -23,8 +23,8 @@ import sched.solver.BacktrackingSolver;
 import sched.solver.Problem;
 
 /**
- * Backtracking sobre el mismo problema sintético que {@code solver/benches/solver.rs}:
- * 6 cursos con 5 grupos cada uno, hasta 500 resultados.
+ * Backtracking sobre un problema sintético: 6 cursos con 5 grupos cada uno, hasta 500
+ * resultados.
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)

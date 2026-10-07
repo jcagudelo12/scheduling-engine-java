@@ -23,8 +23,8 @@ import sched.domain.TimeSlot;
 import sched.domain.Weekday;
 
 /**
- * Costo de encontrar los grupos de los cursos de un estudiante dentro del catálogo completo.
- * Equivalente a {@code simulation/benches/catalog_lookup.rs}.
+ * Costo de encontrar los grupos de los cursos de un estudiante dentro del catálogo completo,
+ * según el tamaño del catálogo. Con el índice por curso no debería depender de ese tamaño.
  */
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.AverageTime)

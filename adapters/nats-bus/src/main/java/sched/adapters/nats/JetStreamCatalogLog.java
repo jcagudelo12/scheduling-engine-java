@@ -20,8 +20,8 @@ import sched.proto.engine.v1.SnapshotChunk;
 import sched.proto.engine.v1.SyncLost;
 
 /**
- * Implementa {@link CatalogLog} sobre NATS JetStream. Mismo stream, sujetos y formato
- * ({@code engine.v1.CatalogLogEntry}) que la versión en Rust.
+ * Implementa {@link CatalogLog} sobre NATS JetStream. Sujetos {@code <prefijo>.catalog.snapshot},
+ * {@code .change} y {@code .sync}, con carga útil {@code engine.v1.CatalogLogEntry} (protobuf).
  */
 public final class JetStreamCatalogLog implements CatalogLog {
 

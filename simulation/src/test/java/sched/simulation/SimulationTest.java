@@ -25,8 +25,8 @@ class SimulationTest {
     void sampleScenarioYieldsExpectedCombinations() throws Exception {
         Map<String, Simulation.Result> results = Simulation.run(Scenario.load(SAMPLE));
 
-        // PRG101-02 está lleno y MAT101-01 choca con FIS101-01 (lunes): mismos valores que la
-        // versión de referencia en Rust.
+        // PRG101-02 está lleno, MAT101-01 choca con FIS101-01 (lunes) y FIS101-02 con ING101-01
+        // (viernes).
         assertEquals(3, results.get("est-001").combinations());
         assertEquals(2, results.get("est-002").combinations());
         assertEquals(1, results.get("est-003").combinations());

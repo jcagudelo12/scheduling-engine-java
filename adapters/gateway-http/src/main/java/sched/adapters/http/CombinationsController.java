@@ -22,7 +22,7 @@ import sched.domain.StudentId;
  * <p>Provisional: el contexto llega sin firmar. Debe reemplazarse por el token firmado por la
  * institución (ADR 0004) antes de exponer este endpoint.
  *
- * <p>Los nombres JSON van en snake_case (configurado en el servidor), igual que en Rust.
+ * <p>Los nombres JSON van en snake_case (configurado en el servidor).
  */
 @RestController
 public class CombinationsController {

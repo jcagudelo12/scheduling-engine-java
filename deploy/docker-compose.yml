@@ -16,7 +16,6 @@ x-engine: &engine
   image: sched-engine-java:dev
   environment: &engine-env
     SCHED_NATS_URL: nats://nats:4222
-    RUST_LOG: info
   depends_on:
     - nats
   restart: unless-stopped
