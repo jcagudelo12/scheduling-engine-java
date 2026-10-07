@@ -11,8 +11,8 @@
 
     <artifactId>sched-proto</artifactId>
     <description>
-        Contrato gRPC con la institución y mensajes internos, generados desde los mismos
-        .proto que usa la versión en Rust (../../proto), más las conversiones con el dominio.
+        Contrato gRPC con la institución (institution.v1, base del SDK) y mensajes internos entre
+        instancias (engine.v1), generados desde src/main/proto, más las conversiones con el dominio.
     </description>
 
     <dependencies>
@@ -43,7 +43,7 @@
                 <configuration>
                     <protoc>${protobuf.version}</protoc>
                     <sourceDirectories>
-                        <sourceDirectory>${project.basedir}/../../proto</sourceDirectory>
+                        <sourceDirectory>${project.basedir}/src/main/proto</sourceDirectory>
                     </sourceDirectories>
                     <plugins>
                         <plugin kind="binary-maven">
