@@ -1,0 +1,17 @@
+# Compilación de Maven
+target/
+
+# Resultados crudos de la prueba de carga (se regeneran con bench/run.sh)
+bench/scenario.json
+bench/students.json
+bench/results*/*.json
+bench/results*/*.txt
+bench/.venv/
+__pycache__/
+
+# Salida de JMH ejecutado sin -rff
+jmh-result.*
+
+# IDE
+.idea/
+*.iml
