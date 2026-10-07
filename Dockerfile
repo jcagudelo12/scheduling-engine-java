@@ -16,4 +16,5 @@ USER sched
 EXPOSE 8080 50051
 HEALTHCHECK --interval=5s --timeout=2s --retries=3 CMD curl -fsS http://localhost:8080/ready || exit 1
 # La JVM usa hasta el 75 % de la memoria asignada al contenedor.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "/app/sched-server.jar"]
+# Netty (gRPC) carga librerías nativas; Java 22+ pide declararlo para no advertir.
+ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/sched-server.jar"]
