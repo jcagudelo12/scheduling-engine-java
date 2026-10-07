@@ -1,0 +1,30 @@
+# Entorno de la prueba de carga. Lo usa bench/run.sh, que en cada repetición levanta todo desde
+# cero (NATS vacío) con el motor en núcleos fijos (ENGINE_CPUS) que no comparte con nada más.
+# NATS y k6 usan otros núcleos.
+
+name: bench
+
+services:
+  nats:
+    image: nats:2
+    command: ["-js"]
+    cpuset: ${NATS_CPUS:-2,3}
+
+  java:
+    image: sched-engine-java:dev
+    build:
+      context: ..
+    cpuset: ${ENGINE_CPUS:-4,6}
+    mem_limit: 1g
+    depends_on: [nats]
+    environment:
+      SCHED_ROLE: all
+      SCHED_NATS_URL: nats://nats:4222
+      SCHED_MAX_COMBINATIONS: ${MAX_COMBINATIONS:-5}
+      LOGGING_LEVEL_ROOT: warn
+      LOGGING_LEVEL_SCHED_SERVER: info
+    ports:
+      # Solo para cargar el catálogo y consultar /ready desde el host. La carga de k6
+      # entra por la red interna de Docker, sin pasar por el proxy de puertos.
+      - "18080:8080"
+      - "15051:50051"
