@@ -35,6 +35,7 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
 | [Glosario](docs/glosario.md) | Términos del dominio y su nombre en el código (grupo = `Section`, `seq`, `stale`…) |
 | [Solución de problemas](docs/solucion-de-problemas.md) | Errores comunes al compilar, arrancar o desplegar |
 | [Decisiones de arquitectura](docs/adr/) | Por qué el motor es como es |
+| [Cómo contribuir](CONTRIBUTING.md) | Flujo de trabajo, regla de capas, pruebas, commits y ADRs |
 | [Prueba de carga](bench/README.md) | Metodología y resultados de rendimiento |
 
 ## Cómo funciona
