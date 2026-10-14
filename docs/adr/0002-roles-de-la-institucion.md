@@ -3,6 +3,7 @@
 - **Estado:** Aceptado
 - **Fecha:** 2026-09-25
 - **Reemplaza:** la versión inicial de este ADR (rol pasivo por consulta gRPC)
+- **Complementado por:** [0007](0007-sdk-de-integracion-propio.md) (propuesto): el proyecto construye el SDK
 
 ## Contexto
 

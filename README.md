@@ -30,6 +30,7 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
 | [Arquitectura](docs/arquitectura.md) | Cómo encajan las piezas, flujo de datos y por dónde leer el código |
 | [API HTTP](docs/api-http.md) | `POST /combinations`, códigos de error y sondas `/health` y `/ready` |
 | [Contrato con la institución](docs/contrato-institucion.md) | Protocolo gRPC de carga y cambios, y cómo probarlo con grpcurl o grpcui |
+| [SDK de integración](docs/sdk.md) | Diseño propuesto del agente que conecta cada universidad con el motor |
 | [Decisiones de arquitectura](docs/adr/) | Por qué el motor es como es |
 | [Prueba de carga](bench/README.md) | Metodología y resultados de rendimiento |
 
@@ -37,7 +38,7 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
 
 - **La institución empuja toda la información; el motor nunca la consulta**
   ([ADR 0002](docs/adr/0002-roles-de-la-institucion.md)).
-- **Catálogo y cupos:** el SDK de la institución hace una carga completa y luego envía solo los
+- **Catálogo y cupos:** el SDK de integración hace una carga completa y luego envía solo los
   cambios, numerados con `seq`. El motor mantiene una réplica en memoria
   ([ADR 0003](docs/adr/0003-replica-del-catalogo.md)).
 - **Varias instancias:** una instancia de ingesta escribe en un historial de NATS JetStream y
@@ -77,7 +78,7 @@ docs/adr/                decisiones de arquitectura
 | Java 25 (LTS) | Lenguaje; hilos virtuales para atender muchas solicitudes a la vez |
 | Maven (con wrapper) | Compilación, pruebas y un módulo por capa |
 | Spring Boot 4.1 (Spring MVC) | API HTTP del estudiante y composición de la aplicación |
-| grpc-java + Protocol Buffers | Contrato con la institución; la institución genera su SDK desde los `.proto` |
+| grpc-java + Protocol Buffers | Contrato con la institución, base del SDK de integración ([ADR 0007](docs/adr/0007-sdk-de-integracion-propio.md)) |
 | jnats (NATS JetStream) | Historial compartido del catálogo entre instancias |
 | JUnit 5 y JMH | Pruebas y microbenchmarks |
 | Docker, Docker Compose y Traefik | Imagen única, despliegue con varias instancias y balanceo |
@@ -97,4 +98,5 @@ repo conserva los commits originales de la carpeta `java/`.
 - Las 5 mejores combinaciones con ramificación y poda y los filtros del estudiante
   ([ADR 0006](docs/adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md)).
 - Avisos de cupo en vivo por WebSocket.
-- SDK de la institución (agente con consultas configurables) y conector de referencia.
+- SDK de integración: agente con consultas configurables que cada universidad instala
+  ([ADR 0007](docs/adr/0007-sdk-de-integracion-propio.md), [diseño](docs/sdk.md)).
