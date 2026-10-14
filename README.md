@@ -32,6 +32,8 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
 | [Contrato con la institución](docs/contrato-institucion.md) | Protocolo gRPC de carga y cambios, y cómo probarlo con grpcurl o grpcui |
 | [Simulador](docs/simulador.md) | Simulador de escenarios, institución simulada y formato de los escenarios |
 | [SDK de integración](docs/sdk.md) | Diseño propuesto del agente que conecta cada universidad con el motor |
+| [Glosario](docs/glosario.md) | Términos del dominio y su nombre en el código (grupo = `Section`, `seq`, `stale`…) |
+| [Solución de problemas](docs/solucion-de-problemas.md) | Errores comunes al compilar, arrancar o desplegar |
 | [Decisiones de arquitectura](docs/adr/) | Por qué el motor es como es |
 | [Prueba de carga](bench/README.md) | Metodología y resultados de rendimiento |
 
