@@ -22,6 +22,7 @@
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
         <dependency><groupId>io.nats</groupId><artifactId>jnats</artifactId></dependency>
         <dependency><groupId>io.grpc</groupId><artifactId>grpc-netty-shaded</artifactId></dependency>
+        <dependency><groupId>io.grpc</groupId><artifactId>grpc-services</artifactId></dependency>
     </dependencies>
 
     <build>

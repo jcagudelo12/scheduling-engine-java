@@ -1,5 +1,6 @@
 package sched.server;
 
+import io.grpc.protobuf.services.ProtoReflectionServiceV1;
 import io.nats.client.Connection;
 import io.nats.client.Nats;
 import java.util.List;
@@ -96,6 +97,8 @@ class EngineConfig {
         IngestState ingest = new IngestState(replica);
         return new IngestGrpcServer(port, readiness, List.of(
                 new CatalogGrpcService(new IngestCatalog(ingest, catalogLog)),
-                new CatalogEventsGrpcService(new IngestCatalogEvent(ingest, catalogLog))));
+                new CatalogEventsGrpcService(new IngestCatalogEvent(ingest, catalogLog)),
+                // Reflection: grpcurl, grpcui y Postman descubren los servicios sin los .proto.
+                ProtoReflectionServiceV1.newInstance()));
     }
 }
