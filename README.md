@@ -27,6 +27,7 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
 | Documento | Para qué |
 |---|---|
 | [Inicio rápido](docs/inicio-rapido.md) | Correr el motor: en memoria, con Docker o en desarrollo local |
+| [Arquitectura](docs/arquitectura.md) | Cómo encajan las piezas, flujo de datos y por dónde leer el código |
 | [Decisiones de arquitectura](docs/adr/) | Por qué el motor es como es |
 | [Prueba de carga](bench/README.md) | Metodología y resultados de rendimiento |
 
