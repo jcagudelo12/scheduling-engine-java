@@ -30,6 +30,7 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
 | [Arquitectura](docs/arquitectura.md) | Cómo encajan las piezas, flujo de datos y por dónde leer el código |
 | [API HTTP](docs/api-http.md) | `POST /combinations`, códigos de error y sondas `/health` y `/ready` |
 | [Contrato con la institución](docs/contrato-institucion.md) | Protocolo gRPC de carga y cambios, y cómo probarlo con grpcurl o grpcui |
+| [Simulador](docs/simulador.md) | Simulador de escenarios, institución simulada y formato de los escenarios |
 | [SDK de integración](docs/sdk.md) | Diseño propuesto del agente que conecta cada universidad con el motor |
 | [Decisiones de arquitectura](docs/adr/) | Por qué el motor es como es |
 | [Prueba de carga](bench/README.md) | Metodología y resultados de rendimiento |
