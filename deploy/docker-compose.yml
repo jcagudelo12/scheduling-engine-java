@@ -73,5 +73,22 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
+  # Institución simulada (solo para desarrollo). No arranca con "up": se usa a demanda con
+  #   docker compose -f deploy/docker-compose.yml run --rm simulator load
+  #   docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01 0
+  # Los escenarios de simulation/fixtures/ se montan; uno nuevo se usa sin reconstruir.
+  simulator:
+    image: sched-simulator-java:dev
+    build:
+      context: ..
+      target: simulator
+    profiles: [tools]
+    environment:
+      SCHED_INGEST_URL: ingest:50051
+    volumes:
+      - ../simulation/fixtures:/app/simulation/fixtures:ro
+    depends_on:
+      - ingest
+
 volumes:
   nats-data:
