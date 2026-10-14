@@ -6,6 +6,30 @@ reglas de matrícula del ITM como caso de prueba, pero el motor es agnóstico de
 
 Fuera de alcance: asignación de aulas, carga docente y planeación de la oferta académica.
 
+## Inicio rápido
+
+Con Docker, sin instalar Java:
+
+```sh
+docker compose -f deploy/docker-compose.yml up -d --build          # NATS, ingesta, 3 consultas, Traefik
+docker compose -f deploy/docker-compose.yml run --rm simulator load # la institución simulada carga el catálogo
+curl -X POST localhost:8080/combinations -H 'content-type: application/json' \
+  -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"]}'
+```
+
+Con Java 25: `./mvnw verify` y luego `java -jar simulation/target/sched-simulation.jar simulate`.
+
+La guía completa, con los tres caminos para correrlo y la configuración, está en
+[docs/inicio-rapido.md](docs/inicio-rapido.md).
+
+## Documentación
+
+| Documento | Para qué |
+|---|---|
+| [Inicio rápido](docs/inicio-rapido.md) | Correr el motor: en memoria, con Docker o en desarrollo local |
+| [Decisiones de arquitectura](docs/adr/) | Por qué el motor es como es |
+| [Prueba de carga](bench/README.md) | Metodología y resultados de rendimiento |
+
 ## Cómo funciona
 
 - **La institución empuja toda la información; el motor nunca la consulta**
@@ -56,64 +80,6 @@ docs/adr/                decisiones de arquitectura
 | Docker, Docker Compose y Traefik | Imagen única, despliegue con varias instancias y balanceo |
 | k6 | Prueba de carga |
 | GitHub Actions | Integración continua (`./mvnw verify`) |
-
-## Comandos
-
-Requiere Java 25. Maven se descarga solo con el wrapper (`mvnw.cmd` en Windows).
-
-```sh
-./mvnw verify                                              # compila y corre las pruebas
-java -jar server/target/sched-server.jar                   # motor (HTTP :8080, gRPC :50051, necesita NATS)
-java -jar simulation/target/sched-simulation.jar simulate  # escenario de ejemplo en memoria
-java -jar benchmarks/target/benchmarks.jar                 # microbenchmarks
-```
-
-### Simulador e institución simulada
-
-```sh
-java -jar simulation/target/sched-simulation.jar simulate [escenario.json]   # en memoria, sin red
-java -jar simulation/target/sched-simulation.jar load [escenario.json] [seq] # carga el catálogo por gRPC
-java -jar simulation/target/sched-simulation.jar seats <seq> <grupo> <cupos> # envía un cambio de cupo
-```
-
-`load` y `seats` usan el contrato gRPC real, como lo haría el SDK de la institución.
-`SCHED_INGEST_URL` indica la ingesta (por defecto `localhost:50051`). El escenario de ejemplo
-está en [`simulation/fixtures/sample.json`](simulation/fixtures/sample.json).
-
-## Despliegue local con varias instancias
-
-```sh
-docker compose -f deploy/docker-compose.yml up -d --build      # NATS, ingesta, 3 consultas, Traefik
-java -jar simulation/target/sched-simulation.jar load           # carga el catálogo
-curl -X POST localhost:8080/combinations -H 'content-type: application/json' \
-  -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"]}'
-docker compose -f deploy/docker-compose.yml up -d --scale engine=5   # más réplicas; Traefik las toma solo
-```
-
-| Servicio | Rol (`SCHED_ROLE`) | Puertos |
-|---|---|---|
-| `ingest` | `ingest`: recibe datos de la institución (una sola instancia) | gRPC `:50051` |
-| `engine` | `query`: atiende estudiantes, escalable | solo red interna |
-| `lb` | Traefik frente a `engine`; solo enruta a réplicas `healthy` | HTTP `:8080`, panel `:8090` |
-| `nats` | JetStream con el historial | `:4222`, monitoreo `:8222` |
-
-## Configuración
-
-Variables de entorno (ver [`application.properties`](server/src/main/resources/application.properties)):
-
-| Variable | Por defecto | Qué hace |
-|---|---|---|
-| `SCHED_ROLE` | `all` | `ingest`, `query` o `all` ([ADR 0005](docs/adr/0005-varias-instancias-con-historial-compartido.md)) |
-| `SCHED_HTTP_PORT` | `8080` | Puerto HTTP |
-| `SCHED_GRPC_PORT` | `50051` | Puerto gRPC de ingesta |
-| `SCHED_NATS_URL` | `nats://localhost:4222` | Servidor NATS |
-| `SCHED_NATS_STREAM` | `SCHED_CATALOG` | Stream del historial |
-| `SCHED_NATS_SUBJECT_PREFIX` | `sched` | Prefijo de los sujetos de NATS |
-| `SCHED_MAX_COMBINATIONS` | `200` | Combinaciones máximas por respuesta |
-
-## Rendimiento
-
-La prueba de carga controlada y sus resultados están en [`bench/README.md`](bench/README.md).
 
 ## Origen
 
