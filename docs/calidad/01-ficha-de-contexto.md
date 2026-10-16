@@ -30,9 +30,8 @@ usuario del motor, con la visión de que después lo usen otras universidades.
    él ([ADR 0002](../adr/0002-roles-de-la-institucion.md)). Su base de datos es la misma que
    atiende la matrícula, y TI no permite que procesos externos usen **más del 5 % de su
    capacidad** durante los turnos, ni que se instale nada en ella.
-5. **Recursos.** Un equipo de **5 personas** y **1.500 USD al mes** de infraestructura. El motor
-   debe poder instalarse después en otras universidades **sin cambiar su código**, solo
-   configurándolo.
+5. **Otras universidades.** El motor debe poder instalarse en una universidad nueva **en 1 día
+   de un ingeniero o menos, sin cambiar su código**, solo configurándolo.
 
 ## Tensión dominante
 
