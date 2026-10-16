@@ -29,7 +29,9 @@ usuario del motor, con la visión de que después lo usen otras universidades.
 4. **Sistema académico.** Sigue siendo el único que confirma matrículas, y el motor no escribe en
    él ([ADR 0002](../adr/0002-roles-de-la-institucion.md)). Su base de datos es la misma que
    atiende la matrícula, y TI no permite que procesos externos usen **más del 5 % de su
-   capacidad** durante los turnos, ni que se instale nada en ella.
+   capacidad** durante los turnos, ni que se instale nada en ella. El motor **funciona en
+   paralelo** con el sistema de matrícula y no lo reemplaza: recomienda, y la matrícula se hace
+   como hoy. Si el motor no responde, el estudiante matricula por el flujo normal.
 5. **Otras universidades.** El motor debe poder instalarse en una universidad nueva **en 1 día
    de un ingeniero o menos, sin cambiar su código**, solo configurándolo.
 

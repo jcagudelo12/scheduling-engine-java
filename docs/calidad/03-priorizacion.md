@@ -9,7 +9,7 @@ mínimo de 1 por atributo, quedan 10 puntos libres.
 | **Eficiencia de desempeño** | **4** | Comportamiento temporal | El portal tiene 1 s (ancla 3) y una búsqueda puede explotar a 2,1 millones de combinaciones. No es un problema de volumen (el pico es de 45 solicitudes/s y ya está medido), sino del peor caso de una sola búsqueda |
 | **Compatibilidad** | **3** | Coexistencia e interoperabilidad | El motor depende de leer una base que está atendiendo la matrícula en ese mismo momento, con un tope del 5 % (ancla 4). Si la afecta, perjudica el proceso que viene a mejorar |
 | **Portabilidad** | **2** | Instalabilidad y adaptabilidad | El motor debe instalarse en otras universidades solo con configuración (ancla 5). Importa para el producto, pero el primer cliente es uno solo |
-| Fiabilidad | 1 | Disponibilidad | Si el motor cae, la matrícula sigue por el sistema académico (S8). Es una ayuda, no un paso obligatorio. La réplica en memoria y el historial compartido ya cubren lo básico (ADR 0003 y 0005) |
+| Fiabilidad | 1 | Disponibilidad | El motor funciona en paralelo con el sistema de matrícula (ancla 4): si cae, el estudiante matricula como hoy. Es una ayuda, no un paso obligatorio. La réplica en memoria y el historial compartido ya cubren lo básico (ADR 0003 y 0005) |
 | Seguridad | 1 | Integridad | El motor no guarda datos sensibles ni confirma matrículas. La manipulación del contexto del estudiante ya está resuelta con el token firmado (ADR 0004) |
 | Usabilidad | 1 | Operabilidad | La pantalla es del portal institucional; el motor entrega datos. Su costo aparece en algunos escenarios, pero no los gobierna |
 | Mantenibilidad | 1 | Modularidad | La arquitectura hexagonal ya aísla las capas (ADR 0001) y no hay una tensión abierta aquí |
@@ -17,9 +17,8 @@ mínimo de 1 por atributo, quedan 10 puntos libres.
 
 ## Qué bajamos para subir otros
 
-- **Fiabilidad a 1 para dar 5 a adecuación funcional y 4 a desempeño.** Se apoya en el supuesto
-  S8. Si el portal no puede matricular sin el motor, la fiabilidad sube a 3 o 4, y habría que
-  quitarle esos puntos a desempeño y a compatibilidad.
+- **Fiabilidad a 1 para dar 5 a adecuación funcional y 4 a desempeño.** Es posible porque el
+  motor funciona en paralelo con el sistema de matrícula (ancla 4): su caída no impide matricular.
 - **Usabilidad a 1 aunque el estudiante es el usuario final.** La experiencia la diseña el portal.
   El costo de esta decisión aparece en E4 (efecto manada) y en una opción del ADR 0009, que pide
   más filtros al estudiante: en ambos casos el que paga es un atributo bajo, y por eso no

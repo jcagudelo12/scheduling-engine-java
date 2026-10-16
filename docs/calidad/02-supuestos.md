@@ -12,10 +12,8 @@ indica qué escenarios dependen de él y qué pasaría si el cliente respondiera
 | S5 | **En cada turno, al menos el 60 % de los estudiantes comparte 4 o más materias con otros de su semestre** | El plan de estudios es fijo en los primeros semestres y los turnos se arman por promedio, que mezcla poco los programas | ¿Cuál es la distribución real de materias por turno del último semestre? | Si los perfiles son variados, el efecto manada es menor y E4 pierde peso | E4 |
 | S6 | **Mostrar 5 combinaciones buenas marcadas como "no garantizadas" es aceptable si se dice** | Es preferible a no mostrar nada o a hacer esperar al estudiante | ¿Acepta Registro que el portal diga "podría haber mejores combinaciones"? | Si no se acepta, todo resultado debe ser exacto, y la latencia de E2 solo se controla limitando lo que el estudiante puede pedir | E2 |
 | S7 | **El peor caso real es de 7 materias con 8 grupos cada una** | Sale del tope de créditos (unos 20 por semestre) y de la oferta de los cursos más demandados | ¿Cuántas materias y cuántos grupos por materia tuvo el estudiante más extremo del semestre pasado? | Con 9 materias el espacio se multiplica por 64: el escenario E2 y sus medidas cambian de escala | E2 |
-| S8 | **Si el motor falla, la matrícula sigue por el flujo normal del sistema académico** | El motor recomienda; no es un paso obligatorio para matricular (ADR 0002) | ¿El portal puede mostrar la matrícula clásica si el motor no responde? | La fiabilidad sube de 1 a 3 o 4 en la priorización, y habría que bajar desempeño o compatibilidad | Priorización |
 
 ## Supuestos que más arriesgan la entrega
 
 - **S1 y S3 juntos.** Definen si existe una frecuencia de lectura que cumpla a la vez "actualizado"
   y "no cargar la base". Son lo primero que hay que confirmar con Registro y con TI.
-- **S8.** Si es falso, cambia la priorización entera.
