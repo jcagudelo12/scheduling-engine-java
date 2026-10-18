@@ -53,6 +53,7 @@ public final class CatalogFollower implements AutoCloseable {
                 try {
                     follow();
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     return;
                 } catch (Exception e) {
                     log.warn("se interrumpió la lectura del historial del catálogo: {}", e.getMessage());
@@ -64,6 +65,7 @@ public final class CatalogFollower implements AutoCloseable {
                 try {
                     Thread.sleep(RETRY_DELAY);
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     return;
                 }
             }
