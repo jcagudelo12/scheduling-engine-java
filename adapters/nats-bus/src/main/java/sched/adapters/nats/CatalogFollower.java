@@ -52,7 +52,7 @@ public final class CatalogFollower implements AutoCloseable {
             while (running) {
                 try {
                     follow();
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     return;
                 } catch (Exception e) {
@@ -64,7 +64,7 @@ public final class CatalogFollower implements AutoCloseable {
                 applyEntry(new CatalogLogEntry.SyncLost());
                 try {
                     Thread.sleep(RETRY_DELAY);
-                } catch (InterruptedException e) {
+                } catch (InterruptedException _) {
                     Thread.currentThread().interrupt();
                     return;
                 }
