@@ -66,10 +66,10 @@ altos **y** cumplirlo cuesta otro atributo también alto:
 
 | Escenario | ¿Dominante alto? | ¿Cuesta otro atributo alto? | ¿Crítico? |
 |---|---|---|---|
-| E1 | Sí: adecuación funcional (5) | Sí: desempeño (4) y compatibilidad (3) | **Sí → [ADR 0008](../adr/0008-grupos-llenos-en-el-pico-de-matricula.md)** |
-| E2 | Sí: desempeño (4) | Sí: adecuación funcional (5) | **Sí → [ADR 0009](../adr/0009-tiempo-maximo-de-la-busqueda.md)** |
+| E1 | Sí: adecuación funcional (5) | Sí: desempeño (3) y compatibilidad (3) | **Sí → [ADR 0008](../adr/0008-grupos-llenos-en-el-pico-de-matricula.md)** |
+| E2 | Sí: desempeño (3) | Sí: adecuación funcional (5) | **Sí → [ADR 0009](../adr/0009-tiempo-maximo-de-la-busqueda.md)** |
 | E3 | Sí: compatibilidad (3) | Sí: adecuación funcional (5) | **Sí → [ADR 0010](../adr/0010-deteccion-de-cambios-en-el-sdk.md)** |
-| E4 | Sí: adecuación funcional (5) | Sí: usabilidad, porque el front que ve el estudiante es nuestro | **Sí → [ADR 0011](../adr/0011-repartir-la-demanda-entre-grupos.md)** |
+| E4 | Sí: adecuación funcional (5) | Sí: usabilidad (3), porque el front que ve el estudiante es nuestro | **Sí → [ADR 0011](../adr/0011-repartir-la-demanda-entre-grupos.md)** |
 
 **Por qué E4 lleva ADR:** el front con el que el estudiante elige filtros, materias y ve sus 5
 mejores combinaciones lo construimos nosotros. Repartir la demanda cambia directamente lo que el
