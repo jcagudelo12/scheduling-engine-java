@@ -1,7 +1,7 @@
 # 0011. Evitar que el top 5 envíe a todos los estudiantes a los mismos grupos
 
 - **Estado:** Propuesto
-- **Fecha:** 2026-10-20
+- **Fecha:** 2026-10-16
 - **Escenario:** [E4](../calidad/04-escenarios.md#e4-todos-reciben-los-mismos-grupos-efecto-manada)
 - **Relacionado con:** [0006](0006-mejores-combinaciones-con-ramificacion-y-poda.md) (criterios del
   top 5), [0005](0005-varias-instancias-con-historial-compartido.md) (instancias sin estado
@@ -22,11 +22,11 @@
 
 Supuestos de los que depende: S5 ([02-supuestos.md](../calidad/02-supuestos.md)).
 
-**Restricciones:** el top 5 se ordena con los criterios que elige el estudiante y es exacto
+**Restricciones**: el top 5 se ordena con los criterios que elige el estudiante y es exacto
 (ADR 0006). Las instancias de consulta no comparten estado entre sí, salvo el historial del
 catálogo (ADR 0005), así que ninguna sabe qué recomendaron las demás.
 
-**La brecha:** hoy el top 5 depende solo del catálogo y de las preferencias del estudiante. Dos
+**La brecha**: hoy el top 5 depende solo del catálogo y de las preferencias del estudiante. Dos
 estudiantes con el mismo perfil reciben exactamente la misma primera combinación. Con 600
 estudiantes iguales y grupos de 35 cupos, el motor puede enviar a un mismo grupo 17 veces más
 gente de la que cabe. El criterio "más cupo disponible" del ADR 0006 no lo evita: todos ven el
