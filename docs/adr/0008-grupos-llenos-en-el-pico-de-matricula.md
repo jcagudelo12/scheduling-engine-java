@@ -21,11 +21,11 @@
 
 Supuestos de los que depende: S1, S2 y S4 ([02-supuestos.md](../calidad/02-supuestos.md)).
 
-Restricciones: el motor no consulta ni escribe en la institución (ADR 0002) y responde desde
+**Restricciones**: el motor no consulta ni escribe en la institución (ADR 0002) y responde desde
 una réplica en memoria (ADR 0003). Hoy solo sabe que un grupo se llenó cuando le llega el
 cambio, y ese retraso lo define el SDK (ADR 0010).
 
-**La brecha:** el motor recomienda grupos con 1 o 2 cupos como si fueran tan seguros como uno de
+**La brecha**: el motor recomienda grupos con 1 o 2 cupos como si fueran tan seguros como uno de
 30. En el pico, el último cupo de un grupo popular dura unos 17 s, del mismo orden que el tiempo
 que tarda el estudiante en leer la pantalla y elegir.
 
@@ -33,16 +33,16 @@ que tarda el estudiante en leer la pantalla y elegir.
 
 ### A. Revalidar justo antes de matricular
 
-Cuando el estudiante elige una combinación, el portal le pide al motor que la compruebe otra vez
+Cuando el estudiante elige una combinación, el front le pide al motor que la compruebe otra vez
 contra la réplica más reciente antes de enviarla al sistema académico. Si un grupo se llenó, el
 motor propone el reemplazo más cercano.
 
 - **Gana:** detecta los grupos que se llenaron mientras el estudiante decidía, sin tocar la
   institución. La consulta es barata, porque compara una sola combinación.
-- **Paga:** una solicitud más por estudiante y un paso más en el portal. No mejora la frescura de
+- **Paga:** una solicitud más por estudiante y un paso más en el front. No mejora la frescura de
   la réplica: sigue limitada al retraso del SDK.
 - **Sacrifica:** desempeño (más solicitudes) y algo de usabilidad.
-- **Qué mediríamos:** porcentaje de matrículas rechazadas por falta de cupo, con y sin
+- **Qué mediremos:** porcentaje de matrículas rechazadas por falta de cupo, con y sin
   revalidación, en una simulación del turno.
 
 ### B. Empujar los cambios de cupo a la pantalla
@@ -54,11 +54,10 @@ sin recargar. El canal ya está previsto (ADR 0003, punto 6).
 - **Gana:** la información llega a la pantalla menos de 1 s después de llegar al motor. El
   estudiante ve el cambio mientras decide, no al final.
 - **Paga:** hasta 4.000 conexiones abiertas en el pico, repartidas entre las instancias. Cada
-  instancia debe saber qué grupos está viendo cada conexión. Más memoria y más lógica de
-  reconexión en el portal.
+  instancia debe saber qué grupos está viendo cada conexión. Más memoria y más lógica de reconexión en el front.
 - **Sacrifica:** desempeño (memoria y conexiones) y algo de fiabilidad (más piezas que pueden
   fallar).
-- **Qué mediríamos:** tiempo desde que llega el cambio al motor hasta que se ve en pantalla, y
+- **Qué mediremos:** tiempo desde que llega el cambio al motor hasta que se ve en pantalla, y
   memoria por conexión con 4.000 conexiones simultáneas.
 
 ### C. Tratar como "en riesgo" los grupos casi llenos
@@ -76,13 +75,13 @@ ubica después de las combinaciones más seguras.
 - **Decisión de producto:** relegar un grupo casi lleno equivale a decidir que esos últimos cupos
   son para quien insiste o para quien consultó antes. Es una política de asignación, no solo un
   ajuste técnico.
-- **Qué mediríamos:** grupos marcados "en riesgo" que no se llenaron en los 2 minutos siguientes
+- **Qué mediremos:** grupos marcados "en riesgo" que no se llenaron en los 2 minutos siguientes
   (falsos llenos), frente a recomendaciones que sí se invalidaron.
 
 ### D. Apartar el cupo mientras el estudiante decide
 
 Al elegir una combinación, el sistema académico aparta sus cupos durante unos minutos. Si el
-estudiante no matricula a tiempo, los cupos se liberan.
+estudiante no se logra matricular a tiempo, los cupos se liberan.
 
 - **Gana:** elimina el rechazo en el momento de matricular: lo elegido está garantizado.
 - **Paga:** exige cambiar el sistema académico, que hoy no tiene reservas (S4), y que el motor o
@@ -92,14 +91,14 @@ estudiante no matricula a tiempo, los cupos se liberan.
   los cupos.
 - **Decisión de producto:** cuánto dura la reserva y cuántas puede tener un estudiante define
   quién bloquea cupos y quién se queda sin ellos.
-- **Qué mediríamos:** porcentaje de reservas que terminan en matrícula, y cupos-minuto bloqueados
+- **Qué mediremos:** porcentaje de reservas que terminan en matrícula, y cupos-minutos bloqueados
   por reservas abandonadas.
 
 ### E. Repartir la demanda entre grupos equivalentes
 
-Al ordenar el top 5, el motor tiene en cuenta cuántas veces recomendó recientemente cada grupo
+Al ordenar el top 5, el motor tiene en cuenta cuántas veces recomendó recientemente a cada grupo
 frente a su cupo restante. Entre combinaciones casi igual de buenas para el estudiante, prefiere
-las que menos gente está mirando. Cubre también el escenario E4.
+las que menos gente está mirando. Es la opción C del [ADR 0011](0011-repartir-la-demanda-entre-grupos.md), que trata el escenario E4.
 
 - **Gana:** menos estudiantes compiten por el mismo último cupo. Ataca la causa del problema y no
   solo el síntoma.
@@ -111,7 +110,7 @@ las que menos gente está mirando. Cubre también el escenario E4.
 - **Decisión de producto:** pone el beneficio colectivo por encima de la preferencia individual.
   Favorece a quien consulta más tarde y perjudica a quien tiene las preferencias más comunes. La
   debe aprobar Registro.
-- **Qué mediríamos:** en una simulación con la distribución de S5, la proporción de estudiantes
+- **Qué mediremos:** en una simulación con la distribución de S5, la proporción de estudiantes
   que encuentra disponible una de sus 5 combinaciones, frente a la diferencia de puntaje con su
   top 5 sin repartir.
 
