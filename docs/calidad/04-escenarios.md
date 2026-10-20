@@ -69,9 +69,10 @@ altos **y** cumplirlo cuesta otro atributo también alto:
 | E1 | Sí: adecuación funcional (5) | Sí: desempeño (4) y compatibilidad (3) | **Sí → [ADR 0008](../adr/0008-grupos-llenos-en-el-pico-de-matricula.md)** |
 | E2 | Sí: desempeño (4) | Sí: adecuación funcional (5) | **Sí → [ADR 0009](../adr/0009-tiempo-maximo-de-la-busqueda.md)** |
 | E3 | Sí: compatibilidad (3) | Sí: adecuación funcional (5) | **Sí → [ADR 0010](../adr/0010-deteccion-de-cambios-en-el-sdk.md)** |
-| E4 | Sí: adecuación funcional (5) | No: el costo cae en usabilidad (1) | No |
+| E4 | Sí: adecuación funcional (5) | Sí: usabilidad, porque el front que ve el estudiante es nuestro | **Sí → [ADR 0011](../adr/0011-repartir-la-demanda-entre-grupos.md)** |
 
-**Por qué E4 no lleva ADR propio:** cumplirlo no obliga a sacrificar un atributo alto. Lo que se
-sacrifica es la preferencia individual de cada estudiante, y esa es una decisión de producto, no
-de arquitectura. Para no perderla, el ADR 0008 la incluye como opción y la declara, porque
-repartir la demanda también reduce los grupos llenos de E1.
+**Por qué E4 lleva ADR:** el front con el que el estudiante elige filtros, materias y ve sus 5
+mejores combinaciones lo construimos nosotros. Repartir la demanda cambia directamente lo que el
+estudiante ve y elige, así que lo que se paga en usabilidad es de nuestro producto, no del portal
+de la institución. Además encierra una decisión de producto (colectivo frente a individual) que
+debe quedar registrada.
