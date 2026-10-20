@@ -59,6 +59,21 @@ Depende de **S1** (el presupuesto de 5 s) y **S3** (el costo de leer el catálog
 
 Depende de **S5** (perfiles homogéneos).
 
+## E5. El motor no responde a tiempo en el pico
+
+| Parte | Contenido |
+|---|---|
+| Atributo de calidad | Fiabilidad (disponibilidad del servicio de recomendación), en tensión con adecuación funcional (el estudiante se queda sin recomendaciones) |
+| Fuente del estímulo | Una instancia del motor que se cae o se satura, o la red entre el front y el motor |
+| Estímulo | El motor deja de responder, o tarda más de lo que el front puede esperar |
+| Artefacto | El front del estudiante y su comunicación con el motor |
+| Entorno | Apertura de turno: 4.000 estudiantes en 15 minutos, con el sistema académico atendiendo la matrícula a plena carga |
+| Respuesta | El front no deja al estudiante esperando: deja de esperar, conserva las materias y filtros que ya eligió y le muestra el camino para matricular por el flujo normal. Cuando el motor vuelve, las recomendaciones reaparecen sin recargar la página |
+| Medida de la respuesta | El front deja de esperar a los **800 ms** como máximo, dentro del segundo del ancla 3 (el motor normalmente responde en ≤ 200 ms, S2). El **100 %** de los estudiantes puede pasar al flujo normal de matrícula en **≤ 1 s** desde que el motor falla. **Ningún** estudiante pierde las materias y filtros que ya había elegido |
+
+Depende de **S2** (los 200 ms del motor) y del **ancla 4** (el motor funciona en paralelo con el
+sistema de matrícula).
+
 ## ¿Cuáles son críticos?
 
 Según el widget, un escenario es crítico cuando su atributo dominante está entre los más altos
@@ -70,9 +85,15 @@ Según el widget, un escenario es crítico cuando su atributo dominante está en
 | E2 | Sí: desempeño (3) | Sí: adecuación funcional (5) | **Sí → [ADR 0009](../adr/0009-tiempo-maximo-de-la-busqueda.md)** |
 | E3 | Sí: compatibilidad (3) | Sí: adecuación funcional (5) | **Sí → [ADR 0010](../adr/0010-deteccion-de-cambios-en-el-sdk.md)** |
 | E4 | Sí: adecuación funcional (5) | Sí: usabilidad (3), porque el front que ve el estudiante es nuestro | **Sí → [ADR 0011](../adr/0011-repartir-la-demanda-entre-grupos.md)** |
+| E5 | No: fiabilidad (1) | Sí: adecuación funcional (5) | No |
 
 **Por qué E4 lleva ADR:** el front con el que el estudiante elige filtros, materias y ve sus 5
 mejores combinaciones lo construimos nosotros. Repartir la demanda cambia directamente lo que el
 estudiante ve y elige, así que lo que se paga en usabilidad es de nuestro producto, no del portal
 de la institución. Además encierra una decisión de producto (colectivo frente a individual) que
 debe quedar registrada.
+
+**Por qué E5 no lleva ADR:** su atributo dominante, la fiabilidad, tiene 1 punto. Puntúa bajo
+justamente porque el motor funciona en paralelo con el sistema de matrícula (ancla 4): si cae, el
+estudiante matricula como hoy. Lo que E5 exige es que el front no bloquee al estudiante, y eso se
+resuelve en el diseño del front, sin una decisión de arquitectura entre atributos altos.

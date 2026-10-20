@@ -33,7 +33,8 @@ mínimo de 1 por atributo, quedan 10 puntos libres.
 | E2: búsqueda que explota | Desempeño (3) | Adecuación funcional (5) |
 | E3: detección de cambios en el SDK | Compatibilidad (3) | Adecuación funcional (5) y portabilidad (1) |
 | E4: efecto manada | Adecuación funcional (5) | Usabilidad (3) |
+| E5: el motor no responde a tiempo | Fiabilidad (1) | Adecuación funcional (5) |
 
 Los cuatro atributos más altos (adecuación funcional, desempeño, compatibilidad y usabilidad) se
-enfrentan entre sí en los cuatro escenarios. Por eso los cuatro son críticos (ver
-[04-escenarios.md](04-escenarios.md)).
+enfrentan entre sí en E1 a E4. Por eso esos cuatro son críticos. E5 depende de la fiabilidad, que
+tiene 1 punto, así que no lo es (ver [04-escenarios.md](04-escenarios.md)).
