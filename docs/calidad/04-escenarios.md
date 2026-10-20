@@ -61,8 +61,8 @@ Depende de **S5** (perfiles homogéneos).
 
 ## ¿Cuáles son críticos?
 
-Prueba del widget. Un escenario es crítico cuando su atributo dominante está entre los más
-altos **y** cumplirlo cuesta otro atributo también alto:
+Según el widget, un escenario es crítico cuando su atributo dominante está entre los más altos
+**y** cumplirlo cuesta otro atributo también alto:
 
 | Escenario | ¿Dominante alto? | ¿Cuesta otro atributo alto? | ¿Crítico? |
 |---|---|---|---|
