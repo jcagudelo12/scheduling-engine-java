@@ -20,11 +20,11 @@
 
 Supuestos de los que depende: S2, S6 y S7 ([02-supuestos.md](../calidad/02-supuestos.md)).
 
-Restricción: el ADR 0006 decidió que el resultado es **exacto** y descartó las heurísticas que
+**Restricción**: el ADR 0006 decidió que el resultado es **exacto** y descartó las heurísticas que
 no lo garantizan. No dijo qué pasa cuando la búsqueda exacta no cabe en el tiempo disponible.
 Ese vacío es lo que decide este ADR.
 
-**La brecha:** la búsqueda de hoy (sin criterios ni filtros) responde en milisegundos porque se
+**La brecha**: la búsqueda de hoy (sin criterios ni filtros) responde en milisegundos porque se
 detiene en las primeras combinaciones válidas. Buscar las 5 *mejores* obliga a recorrer el árbol
 hasta demostrar que no hay otras mejores, y con la cota relajada de "huecos" la poda puede no
 alcanzar en el peor caso. No hay hoy ningún límite al tiempo que puede consumir una solicitud.
@@ -41,7 +41,7 @@ Se mantiene lo que dice el ADR 0006 tal cual: la búsqueda termina cuando demues
 - **Paga:** latencia sin cota en el peor caso. Una búsqueda difícil ocupa un núcleo mientras dura
   y retrasa a los demás estudiantes de esa instancia.
 - **Sacrifica:** desempeño (cola larga de latencia y aislamiento entre solicitudes).
-- **Qué mediríamos:** p99 y máximo por perfil, con un generador de los peores casos (7 × 8, sin
+- **Qué mediremos:** p99 y máximo por perfil, con un generador de los peores casos (7 × 8, sin
   filtros, "huecos" primero), y el efecto sobre la p99 de las solicitudes normales concurrentes.
 
 ### B. Presupuesto de tiempo y la mejor respuesta encontrada
@@ -55,7 +55,7 @@ las 5 mejores que encontró hasta ese momento, marcadas como "no garantizadas".
   momento, lo que es difícil de probar y de explicar. Hay que decir en pantalla que podría haber
   mejores (S6).
 - **Sacrifica:** adecuación funcional (exactitud en los casos difíciles) y reproducibilidad.
-- **Qué mediríamos:** porcentaje de respuestas cortadas por el presupuesto, y distancia de su
+- **Qué mediremos:** porcentaje de respuestas cortadas por el presupuesto, y distancia de su
   puntaje respecto al top 5 exacto calculado sin límite.
 
 ### C. Presupuesto de trabajo en lugar de tiempo
@@ -67,7 +67,7 @@ consulta sobre el mismo catálogo siempre explora lo mismo y da la misma respues
 - **Paga:** el tiempo real varía con la carga de la máquina, así que el límite se calibra con un
   margen. Comparte con B la pérdida de exactitud en los casos difíciles.
 - **Sacrifica:** adecuación funcional (exactitud), y algo de precisión en la cota de tiempo.
-- **Qué mediríamos:** ramas exploradas por el p99 de los perfiles reales, y tiempo de ese número
+- **Qué mediremos:** ramas exploradas por el p99 de los perfiles reales, y tiempo de ese número
   de ramas con la instancia al 70 % de CPU.
 
 ### D. Pedirle al estudiante que acote antes de buscar
@@ -83,7 +83,7 @@ que ordene menos criterios.
 - **Decisión de producto:** exige más pasos precisamente a los estudiantes con más materias, que
   suelen ser los que van atrasados o están repitiendo. Decide a quién se le pone más difícil la
   matrícula.
-- **Qué mediríamos:** porcentaje de consultas reales que superan el umbral, y cuántas de ellas se
+- **Qué mediremos:** porcentaje de consultas reales que superan el umbral, y cuántas de ellas se
   abandonan sin completar el filtro.
 
 ### E. Guardar los resultados de los perfiles frecuentes
@@ -94,12 +94,12 @@ cupo de alguno de sus grupos.
 
 - **Gana:** las consultas repetidas responden al instante, aunque su búsqueda sea cara.
 - **Paga:** en el pico cambian hasta 30 cupos por segundo, así que los resultados guardados se
-  invalidan constantemente, justo cuando más se necesitan. Ocupa memoria. No ayuda al estudiante
+  invalidan constantemente, justo cuando más se necesitan. Ocupa la memoria. No ayuda al estudiante
   con un perfil poco común, que puede ser el peor caso.
 - **Sacrifica:** adecuación funcional (riesgo de servir un resultado que ya no corresponde al
   cupo actual, en tensión directa con el [ADR 0008](0008-grupos-llenos-en-el-pico-de-matricula.md))
   y memoria.
-- **Qué mediríamos:** tasa de aciertos durante un turno simulado, con la tasa de cambios del
+- **Qué mediremos:** tasa de aciertos durante un turno simulado, con la tasa de cambios del
   ancla 2.
 
 ### Resumen
