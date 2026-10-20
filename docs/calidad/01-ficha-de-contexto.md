@@ -1,7 +1,12 @@
 # 1. Ficha de contexto
 
-Caso: **proyecto propio**. El cliente es la oficina de Admisiones y Registro del ITM, primer
-usuario del motor, con la visión de que después lo usen otras universidades.
+**Caso:** proyecto motor de planificación de horarios. El cliente es la oficina de Admisiones y
+Registro del ITM, primer usuario del motor, con la visión de que después lo usen otras
+universidades.
+
+El proyecto incluye el motor, el SDK de integración y el front con el que el estudiante elige
+materias y filtros y ve sus 5 mejores combinaciones. La matrícula sigue haciéndose en el sistema
+académico.
 
 ## Lo que dice el cliente
 
@@ -24,7 +29,7 @@ usuario del motor, con la visión de que después lo usen otras universidades.
    de un turno se registran hasta **30 matrículas por segundo**, y los grupos más pedidos se llenan
    en **menos de 10 minutos**.
 3. **Tamaño de la búsqueda.** Un estudiante tiene hasta **7 materias** habilitadas, con hasta
-   **8 grupos** cada una: hasta 2,1 millones de combinaciones posibles antes de podar. El portal
+   **8 grupos** cada una: hasta 2,1 millones de combinaciones posibles antes de podar. El front
    debe mostrar sus combinaciones en **menos de 1 s (p95)**.
 4. **Sistema académico.** Sigue siendo el único que confirma matrículas, y el motor no escribe en
    él ([ADR 0002](../adr/0002-roles-de-la-institucion.md)). Su base de datos es la misma que
@@ -42,17 +47,24 @@ recomendaciones sigan siendo ciertas cuando el estudiante va a matricular**. Los
 más rápido de lo que la institución puede informarlos sin sobrecargar su propia base, y la
 recomendación misma concentra la demanda en los mismos grupos.
 
+En una línea: recomendar al instante las mejores combinaciones choca con que aún tengan cupo al
+matricular, porque los cupos cambian más rápido de lo que la institución informa y la
+recomendación concentra la demanda.
+
 ## Lo que el cliente no dijo
 
-Cada pregunta se responde como supuesto en [02-supuestos.md](02-supuestos.md).
+Cada pregunta se responde como supuesto en [02-supuestos.md](02-supuestos.md) o con algo ya
+decidido (anclas y [ADRs](#lo-que-ya-está-decidido) aceptados).
 
-- ¿Qué tan "actualizado" debe estar un cupo: segundos o un minuto?
-- ¿Qué es "lo mejor" para un estudiante, y quién lo define?
-- ¿Se puede apartar un cupo mientras el estudiante decide?
-- ¿Qué pasa si el motor recomienda lo mismo a todos y esos grupos se llenan?
-- ¿Cuánto cuesta en la base académica leer el catálogo, y qué permisos dará TI?
-- Si una búsqueda tarda demasiado, ¿se espera o se muestra algo aproximado?
-- Si el motor falla en plena matrícula, ¿el estudiante puede seguir matriculando?
+| Pregunta | Dónde se responde | Cómo |
+|---|---|---|
+| ¿Qué tan "actualizado" debe estar un cupo: segundos o un minuto? | S1 | Un grupo lleno deja de ofrecerse en 5 s o menos |
+| ¿Qué es "lo mejor" para un estudiante, y quién lo define? | Ningún supuesto: lo responde el [ADR 0006](../adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md) ("Lo que ya está decidido") | El estudiante elige y ordena sus criterios (menos huecos, menos días, más cupo…) |
+| ¿Se puede apartar un cupo mientras el estudiante decide? | S4 | No: el sistema académico no tiene reservas y el motor no escribe en él |
+| ¿Qué pasa si el motor recomienda lo mismo a todos y esos grupos se llenan? | S5, que alimenta E4 y el ADR 0011 | Al menos el 60 % comparte 4 o más materias, así que el efecto manada es real |
+| ¿Cuánto cuesta en la base académica leer el catálogo, y qué permisos dará TI? | S3 (costo) y ancla 4 (permisos) | Leer el catálogo cuesta unos 200 ms de CPU. TI da solo un usuario de lectura, sin instalar nada y con un tope del 5 % |
+| Si una búsqueda tarda demasiado, ¿se espera o se muestra algo aproximado? | S6, con apoyo de S2 y S7 | Se acepta mostrar 5 combinaciones "no garantizadas" si se dice. El motor tiene 200 ms (S2) y el peor caso es de 7 × 8 (S7) |
+| Si el motor falla en plena matrícula, ¿el estudiante puede seguir matriculando? | Ningún supuesto: lo responde el ancla 4 | **Sí**: el motor funciona en paralelo, y si no responde, el estudiante matricula por el flujo normal |
 
 ## Decisión de producto escondida
 
