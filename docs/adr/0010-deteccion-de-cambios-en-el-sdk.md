@@ -20,11 +20,11 @@
 
 Supuestos de los que depende: S1 y S3 ([02-supuestos.md](../calidad/02-supuestos.md)).
 
-Restricción: el ADR 0007 (también Propuesto) propone como primera versión consultar la base
+**Restricción**: el ADR 0007 (también Propuesto) propone como primera versión consultar la base
 periódicamente y comparar. Este ADR abre esa parte de la decisión con sus alternativas, porque es
 donde se cruzan el "actualizado" del cliente y el tope de TI.
 
-**La brecha:** con el supuesto S3, leer el catálogo completo cada 4 s consume cerca del 5 % de la
+**La brecha**: con el supuesto S3, leer el catálogo completo cada 4 s consume cerca del 5 % de la
 CPU de la base, justo en el límite de TI y sin margen. Leerlo más seguido rompe el tope; leerlo
 menos seguido rompe el retraso de 4 s.
 
@@ -39,10 +39,10 @@ lectura anterior y envía las diferencias (la versión 1 del ADR 0007).
   fácil de instalar en una universidad nueva, porque basta con escribir una consulta. Nunca pierde
   un cambio: compara estados completos.
 - **Paga:** la carga crece con el tamaño del catálogo y con la frecuencia, no con los cambios
-  reales. El retraso es, como mínimo, el intervalo entre lecturas.
+  reales. El retraso es, como mínimo, el intervalo entre las lecturas.
 - **Sacrifica:** compatibilidad (carga constante aunque nada cambie) o adecuación funcional
   (frescura), según cómo se fije N.
-- **Qué mediríamos:** CPU de la base por lectura completa en el catálogo real (confirma S3), y el
+- **Qué mediremos:** CPU de la base por lectura completa en el catálogo real (confirma S3), y el
   menor N que respeta el 5 %.
 
 ### B. Leer solo lo que cambió desde la última lectura
@@ -57,7 +57,7 @@ lectura completa para detectar los grupos eliminados.
   todas tienen ni todas mantienen bien. Los borrados no se ven hasta la lectura completa.
 - **Sacrifica:** portabilidad (depende del esquema de cada universidad, así que la instalación ya
   no es "solo configurar") y algo de adecuación funcional (borrados tardíos).
-- **Qué mediríamos:** costo de la consulta incremental con 30 cambios/s, y en cuántas
+- **Qué mediremos:** costo de la consulta incremental con 30 cambios/s, y en cuántas
   universidades candidatas existe esa columna con índice.
 
 ### C. Leer el registro de transacciones de la base
@@ -71,9 +71,9 @@ consultar tablas. Recibe cada cambio de cupo casi al mismo tiempo que se confirm
   distinta para cada motor de base de datos. Agrega una pieza de infraestructura que alguien
   debe operar.
 - **Sacrifica:** portabilidad (instalabilidad) y compatibilidad en el sentido de los permisos.
-- **Decisión de política:** la universidad tendría que dar acceso a un registro que contiene
+- **Decisión política:** la universidad tendría que dar acceso a un registro que contiene
   todas sus transacciones, no solo las de cupos. Es una decisión de TI y de protección de datos.
-- **Qué mediríamos:** retraso de punta a punta en el pico y carga añadida a la base, en una base
+- **Qué mediremos:** retraso de punta a punta en el pico y carga añadida a la base, en una base
   de prueba con el volumen del ancla 2.
 
 ### D. Que la base anote los cambios en una tabla aparte
@@ -85,7 +85,7 @@ de cambios pendientes. El agente lee y vacía esa tabla, que es pequeña.
 - **Paga:** hay que instalar algo dentro de la base académica, y TI no lo permite (ancla 4). Cada
   matrícula hace una escritura más, justo en el momento de mayor carga.
 - **Sacrifica:** compatibilidad (modifica y carga el sistema de otro) y portabilidad.
-- **Qué mediríamos:** tiempo adicional por matrícula en el sistema académico con el disparador
+- **Qué mediremos:** tiempo adicional por matrícula en el sistema académico con el disparador
   activo, a 30 matrículas/s.
 
 ### E. Ajustar la frecuencia de lectura a la carga de la base
@@ -98,7 +98,7 @@ lecturas, y cuando está tranquila, lee más seguido. El objetivo es usar siempr
 - **Paga:** el retraso deja de ser fijo: crece justo en el pico, cuando más importa la frescura.
   Hay que informarle al motor que la frescura bajó.
 - **Sacrifica:** adecuación funcional (frescura) en los peores minutos.
-- **Qué mediríamos:** retraso p99 durante el pico simulado, frente a la CPU de la base usada por el
+- **Qué mediremos:** retraso p99 durante el pico simulado, frente a la CPU de la base usada por el
   agente.
 
 ### Resumen
@@ -113,7 +113,7 @@ lecturas, y cuando está tranquila, lee más seguido. El objetivo es usar siempr
 
 Las opciones se combinan: E se aplica sobre A o B, y una instalación puede empezar con A y
 pasar a B o C cuando la universidad lo permita. El SDK lo admite sin cambiar su núcleo, porque
-cada mecanismo es un adaptador distinto del puerto `FuenteAcademica` (ADR 0007).
+cada mecanismo es un adaptador distinto del puerto Fuente Académica (ADR 0007).
 
 ## Decisión
 
