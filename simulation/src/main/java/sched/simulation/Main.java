@@ -23,6 +23,7 @@ import sched.proto.institution.v1.SyncStatus;
  * java -jar simulation/target/sched-simulation.jar simulate [escenario.json]
  * java -jar simulation/target/sched-simulation.jar load [escenario.json] [seq]
  * java -jar simulation/target/sched-simulation.jar seats &lt;seq&gt; &lt;grupo&gt; &lt;cupos&gt;
+ * java -jar simulation/target/sched-simulation.jar seat-storm --rate &lt;n&gt; --duration &lt;s&gt; --sections &lt;archivo&gt; [--seq 2] [--start-at &lt;epoch ms&gt;]
  * java -jar simulation/target/sched-simulation.jar demo-catalog --out &lt;scenario.json&gt; [--seed n]
  * java -jar simulation/target/sched-simulation.jar experiment --config &lt;json&gt; --out &lt;dir&gt; [--seed n] [--profiles n] [--analyze]
  * java -jar simulation/target/sched-simulation.jar calibrate --config &lt;json&gt; --out &lt;dir&gt; [--budget n] [--profiles n] [--seed n]
@@ -50,6 +51,9 @@ public final class Main {
               load [escenario.json] [seq]        envía el catálogo al motor por gRPC
               seats <seq> <grupo> <cupos>        envía un cambio de cupo al motor
                 (load y seats aceptan --tls-cert <pem> --tls-key <pem> --tls-ca <pem> o --plaintext)
+              seat-storm --rate <n> --duration <s> --sections <archivo> [--seq 2] [--start-at <epoch ms>]
+                (ráfaga de cupos del pico: vacía los grupos del archivo, uno por línea, a n por segundo
+                 durante s segundos; el evento i sale en inicio + i/n; acepta las opciones de TLS)
               keygen --out <dir> --kid <kid>     genera un par Ed25519 (<kid>.key privada, <kid>.pem pública)
               token --key <pem> --kid <kid> --student <id> --courses A,B --iss <emisor> --aud <audiencia> [--ttl s]
                                                  imprime un token firmado para Authorization: Bearer (--ttl: 600 s)
@@ -100,6 +104,7 @@ public final class Main {
                 seats(Long.parseLong(cli.positional()[1]), cli.positional()[2],
                         Integer.parseInt(cli.positional()[3]), cli.credentials());
             }
+            case "seat-storm" -> seatStorm(Cli.parse(args));
             case "keygen" -> {
                 Cli cli = Cli.parse(args);
                 DevAuth.keygen(Path.of(cli.required("--out")), cli.required("--kid"));
@@ -164,6 +169,27 @@ public final class Main {
             };
             System.out.println("respuesta del motor: " + text);
         }
+    }
+
+    private static void seatStorm(Cli cli) throws Exception {
+        double rate = Double.parseDouble(cli.required("--rate"));
+        long durationMs = Math.round(Double.parseDouble(cli.required("--duration")) * 1000);
+        List<String> sections = SeatStorm.readSections(Path.of(cli.required("--sections")));
+        long seq = Long.parseLong(cli.options().getOrDefault("--seq", "2"));
+        long startAt = Long.parseLong(cli.options().getOrDefault("--start-at", "0"));
+        try (FakeInstitution institution = new FakeInstitution(ingestUrl(), cli.credentials());
+             FakeInstitution.SeatStream stream = institution.openSeatStream()) {
+            SeatStorm.Result result = SeatStorm.run(sections, rate, durationMs, seq, startAt, stream::send);
+            stream.close();
+            List<Double> latencies = stream.ackLatenciesMs().stream().sorted().toList();
+            System.out.printf("seat-storm: enviados=%d acks=%d sin_ack=%d retraso_max_ms=%d ack_p50_ms=%.2f ack_p99_ms=%.2f%n",
+                    result.sent(), stream.acks(), stream.notAcked(), result.maxLagMs(),
+                    percentile(latencies, 0.50), percentile(latencies, 0.99));
+        }
+    }
+
+    private static double percentile(List<Double> sorted, double p) {
+        return sorted.isEmpty() ? 0 : sorted.get(Math.min(sorted.size() - 1, (int) Math.ceil(p * sorted.size()) - 1));
     }
 
     private static Path scenarioPath(String[] args, int index) {

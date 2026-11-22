@@ -9,6 +9,11 @@ import io.grpc.stub.StreamObserver;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import sched.domain.Course;
@@ -130,6 +135,93 @@ public final class FakeInstitution implements AutoCloseable {
         SyncStatus status = result.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
         events.onCompleted();
         return status;
+    }
+
+    /**
+     * Abre un único stream de cambios para enviar muchos eventos de cupo seguidos (ráfaga del
+     * pico). Los {@code seq} deben ser consecutivos; el motor responde a cada evento.
+     */
+    public SeatStream openSeatStream() {
+        return new SeatStream();
+    }
+
+    /** Stream de cambios de cupo con registro de las respuestas del motor y su latencia. */
+    public final class SeatStream implements AutoCloseable {
+
+        private final Map<Long, Long> sentAtNanos = new ConcurrentHashMap<>();
+        private final ConcurrentLinkedQueue<Long> ackNanos = new ConcurrentLinkedQueue<>();
+        private final AtomicInteger sent = new AtomicInteger();
+        private final AtomicInteger acks = new AtomicInteger();
+        private final AtomicInteger notAcked = new AtomicInteger();
+        private final AtomicBoolean closed = new AtomicBoolean();
+        private final StreamObserver<CatalogEvent> events;
+
+        private SeatStream() {
+            this.events = CatalogEventsServiceGrpc.newStub(channel).syncChanges(new StreamObserver<>() {
+                @Override
+                public void onNext(SyncStatus status) {
+                    if (status.getStatusCase() == SyncStatus.StatusCase.ACK) {
+                        Long start = sentAtNanos.remove(status.getAck().getSeq());
+                        if (start != null) {
+                            ackNanos.add(System.nanoTime() - start);
+                        }
+                        acks.incrementAndGet();
+                    } else {
+                        notAcked.incrementAndGet();
+                    }
+                }
+
+                @Override
+                public void onError(Throwable error) {
+                    notAcked.incrementAndGet();
+                }
+
+                @Override
+                public void onCompleted() {
+                }
+            });
+        }
+
+        /** Envía un cambio de cupo sin esperar la respuesta. */
+        public synchronized void send(long seq, String sectionId, int available) {
+            sentAtNanos.put(seq, System.nanoTime());
+            sent.incrementAndGet();
+            events.onNext(CatalogEvent.newBuilder()
+                    .setSeq(seq)
+                    .setSeatsChanged(SeatsChanged.newBuilder().setSectionId(sectionId).setAvailableSeats(available))
+                    .build());
+        }
+
+        public int sent() {
+            return sent.get();
+        }
+
+        public int acks() {
+            return acks.get();
+        }
+
+        /** Respuestas que no fueron {@code Ack} (rechazos, resincronización o error del stream). */
+        public int notAcked() {
+            return notAcked.get();
+        }
+
+        /** Latencias de confirmación, en milisegundos, en el orden de llegada. */
+        public List<Double> ackLatenciesMs() {
+            return ackNanos.stream().map(n -> n / 1_000_000.0).toList();
+        }
+
+        /** Espera las respuestas pendientes (hasta 10 s) y cierra el stream. Se puede llamar más de una vez. */
+        @Override
+        public void close() throws InterruptedException {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            while (acks.get() + notAcked.get() < sent.get() && System.nanoTime() < deadline) {
+                Thread.sleep(20);
+            }
+            events.onCompleted();
+        }
     }
 
     @Override
