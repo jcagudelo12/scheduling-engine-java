@@ -59,6 +59,11 @@ de aparecer y, tras el hueco, las respuestas llegan con `stale: true`.
 {
   "max_results": 200,
   "catalog_seq": 1,
+  "max_credits": 12,
+  "courses": [
+    { "id": "MAT101", "credits": 4 },
+    { "id": "FIS101", "credits": 3 }
+  ],
   "students": [
     { "id": "est-001", "courses": ["MAT101", "FIS101"] }
   ],
@@ -81,6 +86,8 @@ de aparecer y, tras el hueco, las respuestas llegan con `stale: true`.
 |---|---|---|---|
 | `max_results` | no | `200` | Máximo de combinaciones por estudiante (solo `simulate`) |
 | `catalog_seq` | no | `0` | `seq` de la carga completa (lo usa `load` si no se pasa otro) |
+| `max_credits` | no | `0` (sin tope) | Tope de créditos del periodo. Si los cursos de un estudiante lo superan, `simulate` termina con error (el motor real responde `422`) |
+| `courses[].id`, `courses[].credits` | no | sin cursos: 0 créditos | Créditos de cada curso. Un curso sin entrada cuenta 0 |
 | `students[].id` | sí, si hay estudiantes | | Identificador del estudiante |
 | `students[].courses` | sí, si hay estudiantes | | Cursos habilitados (solo `simulate`) |
 | `sections[].id` | sí | | Identificador del grupo |
@@ -90,7 +97,7 @@ de aparecer y, tras el hueco, las respuestas llegan con `stale: true`.
 | `sections[].slots[].day` | sí | | `monday` … `sunday`, en minúsculas |
 | `sections[].slots[].start`, `end` | sí | | Hora `HH:MM` en formato 24 h; `start` debe ser menor que `end` |
 
-`load` solo usa `sections` y `catalog_seq`; `students` y `max_results` son para `simulate`.
+`load` usa `sections`, `courses`, `max_credits` y `catalog_seq`; `students` y `max_results` son para `simulate`.
 
 ## Crear escenarios propios
 
@@ -102,7 +109,8 @@ docker compose -f deploy/docker-compose.yml run --rm simulator load simulation/f
 ```
 
 **Generado, de cualquier tamaño:** el generador de la prueba de carga crea un catálogo con
-semilla fija (5 grupos por curso, alrededor del 10 % llenos):
+semilla fija (5 grupos por curso, alrededor del 10 % llenos, 2 a 4 créditos por curso y un
+`max_credits` de 24, que ningún estudiante generado supera):
 
 ```sh
 python3 bench/generate_scenario.py 50 100        # 50 cursos → 250 grupos; 100 estudiantes

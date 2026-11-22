@@ -30,7 +30,8 @@ public final class Simulation {
     public static Map<String, Result> run(Scenario scenario) throws AppException {
         CatalogReplica replica = new CatalogReplica();
         InMemoryCatalogLog log = new InMemoryCatalogLog(new ApplyLogEntry(replica));
-        new IngestCatalog(new IngestState(replica), log).execute(scenario.catalogSeq(), scenario.sections());
+        new IngestCatalog(new IngestState(replica), log).execute(
+                scenario.catalogSeq(), scenario.sections(), scenario.courses(), scenario.rules());
         GenerateCombinations generate = new GenerateCombinations(new BacktrackingSolver(), replica, scenario.maxResults());
 
         Map<String, Result> results = new LinkedHashMap<>();

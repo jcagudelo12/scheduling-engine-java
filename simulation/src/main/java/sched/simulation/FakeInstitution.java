@@ -7,6 +7,8 @@ import io.grpc.stub.StreamObserver;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import sched.domain.Course;
+import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
 import sched.proto.Convert;
 import sched.proto.institution.v1.CatalogChunk;
@@ -34,8 +36,12 @@ public final class FakeInstitution implements AutoCloseable {
                 .build();
     }
 
-    /** Carga completa del catálogo, en bloques del mismo {@code seq}. */
-    public LoadCatalogResponse load(long seq, List<SectionSeats> sections) throws Exception {
+    /**
+     * Carga completa del catálogo, en bloques del mismo {@code seq}. Los cursos se reparten entre
+     * los bloques y las reglas del periodo van una sola vez, en el primero.
+     */
+    public LoadCatalogResponse load(long seq, List<SectionSeats> sections, List<Course> courses, EnrollmentRules rules)
+            throws Exception {
         CompletableFuture<LoadCatalogResponse> result = new CompletableFuture<>();
         StreamObserver<CatalogChunk> chunks = CatalogServiceGrpc.newStub(channel).loadCatalog(new StreamObserver<>() {
             @Override
@@ -53,15 +59,27 @@ public final class FakeInstitution implements AutoCloseable {
             }
         });
 
-        for (int from = 0; from < Math.max(1, sections.size()); from += SECTIONS_PER_CHUNK) {
+        int size = Math.max(1, Math.max(sections.size(), courses.size()));
+        for (int from = 0; from < size; from += SECTIONS_PER_CHUNK) {
             CatalogChunk.Builder chunk = CatalogChunk.newBuilder().setSeq(seq);
-            for (SectionSeats s : sections.subList(from, Math.min(sections.size(), from + SECTIONS_PER_CHUNK))) {
+            for (SectionSeats s : slice(sections, from)) {
                 chunk.addSections(Convert.sectionToPb(s.section(), s.available()));
+            }
+            for (Course course : slice(courses, from)) {
+                chunk.addCourses(Convert.courseToPb(course));
+            }
+            if (from == 0) {
+                chunk.setRules(Convert.rulesToPb(rules));
             }
             chunks.onNext(chunk.build());
         }
         chunks.onCompleted();
         return result.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+    }
+
+    private static <T> List<T> slice(List<T> items, int from) {
+        int start = Math.min(items.size(), from);
+        return items.subList(start, Math.min(items.size(), start + SECTIONS_PER_CHUNK));
     }
 
     /** Envía un cambio de cupo y devuelve la respuesta del motor. */

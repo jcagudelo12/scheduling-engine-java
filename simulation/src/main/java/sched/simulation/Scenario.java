@@ -4,7 +4,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import sched.domain.Course;
 import sched.domain.CourseId;
+import sched.domain.EnrollmentRules;
 import sched.domain.Section;
 import sched.domain.SectionId;
 import sched.domain.SectionSeats;
@@ -20,16 +22,25 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <pre>{@code
  * {
- *   "max_results": 200, "catalog_seq": 1,
+ *   "max_results": 200, "catalog_seq": 1, "max_credits": 18,
+ *   "courses": [{ "id": "MAT101", "credits": 4 }],
  *   "students": [{ "id": "est-001", "courses": ["MAT101"] }],
  *   "sections": [{ "id": "MAT101-01", "course": "MAT101", "capacity": 35, "available": 10,
  *                  "slots": [{ "day": "monday", "start": "06:00", "end": "08:00" }] }]
  * }
  * }</pre>
  *
- * <p>{@code available} es opcional: si falta, el grupo arranca con todo su cupo.
+ * <p>{@code available} es opcional: si falta, el grupo arranca con todo su cupo. {@code courses}
+ * (créditos por curso) y {@code max_credits} (tope del periodo, 0 o ausente = sin tope) también
+ * son opcionales.
  */
-public record Scenario(int maxResults, long catalogSeq, List<SectionSeats> sections, List<StudentContext> students) {
+public record Scenario(
+        int maxResults,
+        long catalogSeq,
+        List<SectionSeats> sections,
+        List<Course> courses,
+        EnrollmentRules rules,
+        List<StudentContext> students) {
 
     public static Scenario load(Path path) {
         JsonNode root = JsonMapper.builder().build().readTree(path);
@@ -55,9 +66,15 @@ public record Scenario(int maxResults, long catalogSeq, List<SectionSeats> secti
             sections.add(new SectionSeats(section, node.has("available") ? node.get("available").asInt() : capacity));
         }
 
+        List<Course> courses = new ArrayList<>();
+        for (JsonNode node : root.path("courses")) {
+            courses.add(new Course(new CourseId(node.get("id").asString()), node.get("credits").asInt()));
+        }
+        EnrollmentRules rules = new EnrollmentRules(root.has("max_credits") ? root.get("max_credits").asInt() : 0);
+
         int maxResults = root.has("max_results") ? root.get("max_results").asInt() : 200;
         long catalogSeq = root.has("catalog_seq") ? root.get("catalog_seq").asLong() : 0;
-        return new Scenario(maxResults, catalogSeq, sections, students);
+        return new Scenario(maxResults, catalogSeq, sections, courses, rules, students);
     }
 
     private static TimeSlot parseSlot(JsonNode slot, String sectionId) {

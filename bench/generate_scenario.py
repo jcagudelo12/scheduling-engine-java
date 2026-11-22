@@ -17,6 +17,10 @@ COURSES = int(sys.argv[1]) if len(sys.argv) > 1 else 1000
 STUDENTS = int(sys.argv[2]) if len(sys.argv) > 2 else 50_000
 SECTIONS_PER_COURSE = 5
 COURSES_PER_STUDENT = 6
+CREDITS = [2, 3, 4]
+# Tope del periodo: 6 cursos de 4 créditos suman 24, así que ningún estudiante generado lo
+# supera y la prueba de carga mide la búsqueda, no el rechazo por créditos.
+MAX_CREDITS = 24
 DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 STARTS = [6 * 60 + 120 * i for i in range(8)]  # bloques de 2 h entre 06:00 y 22:00
 OUT = Path(__file__).parent
@@ -27,6 +31,9 @@ def hhmm(minutes):
 
 
 catalog_rng = random.Random(42)
+# Generador aparte para no alterar los grupos generados antes de que existieran los créditos.
+credits_rng = random.Random(99)
+courses = [{"id": f"C{c:04d}", "credits": credits_rng.choice(CREDITS)} for c in range(COURSES)]
 sections = []
 for c in range(COURSES):
     for s in range(SECTIONS_PER_COURSE):
@@ -51,6 +58,8 @@ students = [
     for i in range(STUDENTS)
 ]
 
-(OUT / "scenario.json").write_text(json.dumps({"catalog_seq": 1, "students": [], "sections": sections}))
+(OUT / "scenario.json").write_text(json.dumps(
+    {"catalog_seq": 1, "max_credits": MAX_CREDITS, "courses": courses, "students": [], "sections": sections}
+))
 (OUT / "students.json").write_text(json.dumps(students))
 print(f"{len(sections)} grupos de {COURSES} cursos; {len(students)} estudiantes")

@@ -66,7 +66,8 @@ public final class Main {
     private static void load(Path path, Long seq) throws Exception {
         Scenario scenario = Scenario.load(path);
         try (FakeInstitution institution = new FakeInstitution(ingestUrl())) {
-            LoadCatalogResponse response = institution.load(seq != null ? seq : scenario.catalogSeq(), scenario.sections());
+            LoadCatalogResponse response = institution.load(
+                    seq != null ? seq : scenario.catalogSeq(), scenario.sections(), scenario.courses(), scenario.rules());
             System.out.printf("catálogo cargado: seq=%d grupos=%d%n", response.getSeq(), response.getSectionsLoaded());
         }
     }
