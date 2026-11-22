@@ -10,11 +10,14 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import sched.simulation.analysis.Analysis;
+import sched.simulation.analysis.AnalysisCli;
+import sched.simulation.analysis.Bootstrap;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Subcomando {@code experiment --config <json> --out <dir> [--seed n] [--profiles n]} y
+ * Subcomando {@code experiment --config <json> --out <dir> [--seed n] [--profiles n] [--analyze]} y
  * {@code calibration --results <csv>}.
  */
 public final class ExperimentCli {
@@ -25,10 +28,13 @@ public final class ExperimentCli {
     private ExperimentCli() {
     }
 
-    public static void experiment(List<String> args) throws Exception {
+    /** @return {@code false} si se pidió {@code --analyze} y falla la condición de diseño (Rtraslape en B) */
+    public static boolean experiment(List<String> allArgs) throws Exception {
+        boolean analyze = allArgs.contains("--analyze");
+        List<String> args = allArgs.stream().filter(a -> !a.equals("--analyze")).toList();
         Map<String, String> flags = flags(args, "--config", "--out", "--seed", "--profiles");
         if (!flags.containsKey("--config") || !flags.containsKey("--out")) {
-            throw new IllegalArgumentException("uso: experiment --config <json> --out <dir> [--seed n] [--profiles n]");
+            throw new IllegalArgumentException("uso: experiment --config <json> --out <dir> [--seed n] [--profiles n] [--analyze]");
         }
         ExperimentConfig config = ExperimentConfig.load(Path.of(flags.get("--config")));
         if (flags.containsKey("--seed")) {
@@ -57,6 +63,12 @@ public final class ExperimentCli {
                 CalibrationReport.compare(rowsA, result.setup().calibration()), rowsA.size()));
         System.out.println("\nresultados: " + out.resolve("results.csv"));
         System.out.println("metadatos:  " + out.resolve("metadata.json"));
+        if (!analyze) {
+            return true;
+        }
+        System.out.println();
+        return AnalysisCli.run(out.resolve("results.csv"), out,
+                new Analysis.Params(0.05, 0.20, config.seed(), Bootstrap.DEFAULT_RESAMPLES));
     }
 
     public static void calibration(List<String> args) {

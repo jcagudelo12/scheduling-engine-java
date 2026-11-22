@@ -344,7 +344,63 @@ java -jar simulation/target/sched-simulation.jar experiment \
 Con `engine.timeMode = zero` los CSV son idénticos byte a byte; con `measured` coinciden los
 perfiles, las llegadas y los conteos, y `t_total_s` varía por el reloj de la máquina.
 
+### Análisis estadístico
+
+Implementa la sección 3.3.4 del documento sobre el CSV del experimento. Se corre solo o encadenado:
+
+```sh
+java -jar simulation/target/sched-simulation.jar analyze --results resultados/base/results.csv \
+    [--out resultados/base] [--alpha 0.05] [--mu0 0.20] [--seed 42]
+# o, al terminar el experimento (usa la semilla del experimento para el bootstrap):
+java -jar simulation/target/sched-simulation.jar experiment --config ... --out ... --analyze
+```
+
+Imprime un resumen y escribe en `--out` (por defecto, la carpeta del CSV) `analysis.md` (tablas
+para el informe, punto decimal y 4 decimales) y `analysis.json` (todos los valores, incluidos los
+parámetros y la semilla, para reproducirlo). Es determinista: misma entrada y semilla, mismos
+resultados.
+
+Qué calcula:
+
+1. **Descriptivos** por condición (n, media, mediana, desviación estándar, rango intercuartílico,
+   mín. y máx.) de `t_total_s`, `r_traslape`, `r_cupo`, `r_total` y `courses_enrolled`. Los cuantiles
+   son de tipo 7 (el predeterminado de R).
+2. **Hipótesis principal.** Por perfil, r = (Ttotal_A - Ttotal_B) / Ttotal_A. H0: la media de r es
+   <= `mu0` (0,20) frente a H1: r > `mu0` (unilateral). Si Shapiro-Wilk (alfa) no rechaza la
+   normalidad de r se usa la t de una muestra; si la rechaza, Wilcoxon de rangos con signo sobre
+   r - `mu0`. Reporta estadístico, p, decisión, IC 95 % t de la media, IC 95 % bootstrap percentil de
+   la media (10.000 remuestreos, semilla fija), la mediana de r y el tamaño del efecto (d de Cohen
+   de una muestra con t; r = Z/raíz(n) con Wilcoxon). El reporte dice qué prueba se eligió y por qué,
+   concluye en términos de la hipótesis y advierte que el p depende del número de perfiles.
+3. **Rtotal** (B - A, pareado): misma regla de elección (normalidad de las diferencias); reporta la
+   prueba bilateral y la unilateral (B < A), el IC 95 % t de la diferencia media y el tamaño del
+   efecto (dz o r).
+4. **Rtraslape en B** no se prueba: se verifica que sea 0 en todos los perfiles. Si no, el reporte
+   marca **FALLA** y el comando termina con código 3.
+5. **Amenaza a la validez:** diferencia B - A de `courses_enrolled` con su IC 95 %, y aviso si
+   |dif| > 0,1. Los perfiles con Ttotal_A = 0 se excluyen de r y se cuentan.
+6. **Subgrupos** (descriptivo, sin pruebas): reducción media y mediana por `n_courses`, `window` y
+   `program`.
+
+Decisiones de implementación:
+
+- **Librería:** Apache Commons Statistics 1.3 (`commons-statistics-inference` y
+  `-distribution`) para t, Wilcoxon y las distribuciones t y normal. Versión en el `pom.xml` raíz.
+- **Shapiro-Wilk** no viene en Commons Statistics: `ShapiroWilk` implementa la aproximación de
+  Royston (1995), algoritmo AS R94 (la de `shapiro.test` de R), válida para 3 <= n <= 5000; se
+  contrasta con el valor de R en las pruebas. Con n > 5000 se usa una submuestra aleatoria de 5000
+  con la semilla fija y el reporte lo indica. Una muestra constante (rango < 1e-19) no tiene W ni p:
+  se trata como no normal y se usa Wilcoxon.
+- **Wilcoxon:** `PValueMethod.AUTO` con corrección de continuidad: p exacto si n <= 50 sin empates ni
+  ceros; si no, aproximación normal de Cureton, con corrección por empates (rangos medios) y por ceros
+  (los valores iguales a `mu` se ordenan con los demás y se descuentan de la media y varianza de W+).
+  El estadístico es W+. El Z del tamaño del efecto sale de la misma aproximación, sin corrección de
+  continuidad. Si todas las diferencias son iguales a `mu`, p = 1 y efecto 0. Con Wilcoxon la prueba
+  contrasta la ubicación de r - `mu0` (no exactamente la media).
+- **Bootstrap:** remuestreo con reemplazo de tamaño n, `SplittableRandom` con la semilla dada, IC
+  por los cuantiles 2,5 % y 97,5 % de las medias.
+
 ### Limitaciones conocidas
 
-- No hay análisis estadístico ni búsqueda automática de parámetros: vienen después. Los valores por
+- No hay búsqueda automática de parámetros: viene después. Los valores por
   defecto no están calibrados y el flujo A aún no reproduce A9, A11 ni A13.

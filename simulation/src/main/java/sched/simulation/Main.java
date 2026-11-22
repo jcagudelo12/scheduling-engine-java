@@ -3,6 +3,7 @@ package sched.simulation;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import sched.simulation.analysis.AnalysisCli;
 import sched.simulation.experiment.ExperimentCli;
 import sched.proto.institution.v1.LoadCatalogResponse;
 import sched.proto.institution.v1.SyncStatus;
@@ -14,8 +15,9 @@ import sched.proto.institution.v1.SyncStatus;
  * java -jar simulation/target/sched-simulation.jar simulate [escenario.json]
  * java -jar simulation/target/sched-simulation.jar load [escenario.json] [seq]
  * java -jar simulation/target/sched-simulation.jar seats &lt;seq&gt; &lt;grupo&gt; &lt;cupos&gt;
- * java -jar simulation/target/sched-simulation.jar experiment --config &lt;json&gt; --out &lt;dir&gt; [--seed n] [--profiles n]
+ * java -jar simulation/target/sched-simulation.jar experiment --config &lt;json&gt; --out &lt;dir&gt; [--seed n] [--profiles n] [--analyze]
  * java -jar simulation/target/sched-simulation.jar calibration --results &lt;results.csv&gt;
+ * java -jar simulation/target/sched-simulation.jar analyze --results &lt;results.csv&gt; [--out &lt;dir&gt;] [--alpha 0.05] [--mu0 0.20] [--seed n]
  * </pre>
  *
  * <p>{@code SCHED_INGEST_URL} indica la ingesta del motor (por defecto {@code localhost:50051}).
@@ -28,8 +30,10 @@ public final class Main {
               simulate [escenario.json]          corre el escenario en memoria, sin red
               load [escenario.json] [seq]        envía el catálogo al motor por gRPC
               seats <seq> <grupo> <cupos>        envía un cambio de cupo al motor
-              experiment --config <json> --out <dir> [--seed n] [--profiles n]
+              experiment --config <json> --out <dir> [--seed n] [--profiles n] [--analyze]
                                                  experimento pareado A (reactivo) frente a B (asistido)
+              analyze --results <csv> [--out <dir>] [--alpha 0.05] [--mu0 0.20] [--seed n]
+                                                 análisis estadístico del experimento (analysis.md y analysis.json)
               calibration --results <csv> [--calibration <json>]
                                                  distribuciones simuladas de A frente a la consulta
             """;
@@ -60,9 +64,18 @@ public final class Main {
                 }
                 seats(Long.parseLong(args[1]), args[2], Integer.parseInt(args[3]));
             }
-            case "experiment" -> ExperimentCli.experiment(List.of(args).subList(1, args.length));
+            case "experiment" -> designHolds(ExperimentCli.experiment(List.of(args).subList(1, args.length)));
+            case "analyze" -> designHolds(AnalysisCli.analyze(List.of(args).subList(1, args.length)));
             case "calibration" -> ExperimentCli.calibration(List.of(args).subList(1, args.length));
             default -> fail(USAGE);
+        }
+    }
+
+    /** Rtraslape en B debe ser 0: si no, el comando termina con código distinto de 0. */
+    private static void designHolds(boolean holds) {
+        if (!holds) {
+            System.err.println("FALLA de la condición de diseño: Rtraslape en B distinto de 0 (ver analysis.md)");
+            System.exit(3);
         }
     }
 
