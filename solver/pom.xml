@@ -13,6 +13,12 @@
     <artifactId>sched-solver</artifactId>
     <description>Búsqueda de combinaciones de horario. Depende solo del dominio.</description>
 
+    <properties>
+        <!-- Núcleo: umbrales de cobertura (JaCoCo) que hacen fallar verify si bajan; medidos: ver CONTRIBUTING.md. -->
+        <jacoco.line.min>0.93</jacoco.line.min>
+        <jacoco.branch.min>0.90</jacoco.branch.min>
+    </properties>
+
     <dependencies>
         <dependency><groupId>sched</groupId><artifactId>sched-domain</artifactId></dependency>
         <dependency>

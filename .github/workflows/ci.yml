@@ -5,8 +5,14 @@ on:
     branches: [master]
   pull_request:
 
+# Una ejecución por rama: una nueva cancela la anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
+    name: Compilar y probar
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,5 +20,42 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
+          # Cachea ~/.m2 con la clave del hash de los pom.xml.
           cache: maven
+      # verify corre las pruebas unitarias, las reglas de arquitectura (quality/), las de integración
+      # con NATS real (Testcontainers; ubuntu-latest trae Docker) y los umbrales de cobertura del núcleo.
       - run: ./mvnw -B verify
+      - name: Reporte de cobertura (JaCoCo)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco
+          if-no-files-found: warn
+          path: |
+            quality/target/site/jacoco-aggregate
+            */target/site/jacoco
+            adapters/*/target/site/jacoco
+      - name: Informes de pruebas
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          if-no-files-found: ignore
+          path: |
+            */target/surefire-reports
+            adapters/*/target/surefire-reports
+
+  # La imagen del motor se construye (no se publica) para detectar un Dockerfile roto antes de integrar.
+  docker:
+    name: Imagen Docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: sched-engine-java:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

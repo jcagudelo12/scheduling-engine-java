@@ -90,6 +90,7 @@ adapters/
 server/                  sched-server         Spring Boot: composición e inyección
 simulation/              sched-simulation     simulador de escenarios e institución simulada
 benchmarks/              sched-benchmarks     microbenchmarks con JMH
+quality/                 sched-quality        reglas de arquitectura (ArchUnit) y cobertura agregada (JaCoCo)
 bench/                   prueba de carga con k6
 deploy/                  despliegue local con varias instancias
 docs/adr/                decisiones de arquitectura
@@ -104,7 +105,8 @@ docs/adr/                decisiones de arquitectura
 | Spring Boot 4.1 (Spring MVC) | API HTTP del estudiante y composición de la aplicación |
 | grpc-java + Protocol Buffers | Contrato con la institución, base del SDK de integración ([ADR 0007](docs/adr/0007-sdk-de-integracion-propio.md)) |
 | jnats (NATS JetStream) | Historial compartido del catálogo entre instancias |
-| JUnit 5 y JMH | Pruebas y microbenchmarks |
+| JUnit 5, ArchUnit, JaCoCo, Testcontainers y JMH | Pruebas, reglas de arquitectura, cobertura, integración con NATS real y microbenchmarks |
+| Micrometer y Prometheus (Spring Boot Actuator) | Métricas en un puerto de administración aparte |
 | Docker, Docker Compose y Traefik | Imagen única, despliegue con varias instancias y balanceo |
 | k6 | Prueba de carga |
 | GitHub Actions | Integración continua (`./mvnw verify`) |
