@@ -8,6 +8,7 @@ import java.util.Set;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import sched.adapters.http.CombinationsController.CreditLimitErrorDto;
@@ -29,7 +30,8 @@ import sched.domain.StudentId;
  * la mayor cantidad posible de sus elecciones. Mismo contexto de estudiante que
  * {@code /combinations} más {@code selection}.
  *
- * <p>Provisional: el contexto llega sin firmar (ADR 0004). JSON en snake_case.
+ * <p>En modo {@code jwt} el estudiante y sus cursos salen del token firmado (ADR 0004); preferencias,
+ * {@code selection} y {@code enrolled} siguen en el cuerpo. JSON en snake_case.
  */
 @RestController
 public class AlternativesController {
@@ -89,14 +91,22 @@ public class AlternativesController {
         this.limits = limits;
     }
 
+    /** Sin token verificado: el contexto sale del cuerpo. */
+    public AlternativesResponse alternatives(AlternativesRequestDto request) throws AppException {
+        return alternatives(request, null);
+    }
+
     @PostMapping("/alternatives")
-    public AlternativesResponse alternatives(@RequestBody AlternativesRequestDto request) throws AppException {
+    public AlternativesResponse alternatives(
+            @RequestBody AlternativesRequestDto request,
+            @RequestAttribute(name = VerifiedStudent.ATTRIBUTE, required = false) VerifiedStudent verified)
+            throws AppException {
         if (request == null) {
             throw new InvalidRequestException("falta el cuerpo de la solicitud");
         }
         StudentContext student = new StudentContext(
-                new StudentId(RequestValidation.id("student_id", request.studentId(), limits)),
-                RequestValidation.idList("eligible_courses", request.eligibleCourses(), limits.maxCourses(), limits)
+                new StudentId(RequestIdentity.studentId(request.studentId(), verified, limits)),
+                RequestIdentity.eligibleCourses(request.eligibleCourses(), verified, limits)
                         .stream().map(CourseId::new).toList(),
                 new Preferences(CombinationsController.parseAvoid(request.avoid(), limits)));
         Alternatives result = suggest.execute(student, parseSelection(request.selection()),

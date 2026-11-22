@@ -6,6 +6,7 @@ import java.util.Locale;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import sched.application.AppException;
@@ -23,8 +24,9 @@ import sched.domain.Weekday;
 /**
  * {@code POST /combinations}, con el contexto del estudiante en el cuerpo.
  *
- * <p>Provisional: el contexto llega sin firmar. Debe reemplazarse por el token firmado por la
- * institución (ADR 0004) antes de exponer este endpoint.
+ * <p>En modo {@code jwt} el estudiante y sus cursos habilitados salen del token firmado por la
+ * institución (ADR 0004), que verifica {@link JwtAuthFilter}; el cuerpo aporta solo las preferencias.
+ * En modo {@code none} (solo desarrollo) llegan en el cuerpo, sin firmar.
  *
  * <p>Los nombres JSON van en snake_case (configurado en el servidor).
  */
@@ -85,14 +87,22 @@ public class CombinationsController {
         this.limits = limits;
     }
 
+    /** Sin token verificado: el contexto sale del cuerpo. */
+    public CombinationsResponse combinations(StudentContextDto request) throws AppException {
+        return combinations(request, null);
+    }
+
     @PostMapping("/combinations")
-    public CombinationsResponse combinations(@RequestBody StudentContextDto request) throws AppException {
+    public CombinationsResponse combinations(
+            @RequestBody StudentContextDto request,
+            @RequestAttribute(name = VerifiedStudent.ATTRIBUTE, required = false) VerifiedStudent verified)
+            throws AppException {
         if (request == null) {
             throw new InvalidRequestException("falta el cuerpo de la solicitud");
         }
         StudentContext student = new StudentContext(
-                new StudentId(RequestValidation.id("student_id", request.studentId(), limits)),
-                RequestValidation.idList("eligible_courses", request.eligibleCourses(), limits.maxCourses(), limits)
+                new StudentId(RequestIdentity.studentId(request.studentId(), verified, limits)),
+                RequestIdentity.eligibleCourses(request.eligibleCourses(), verified, limits)
                         .stream().map(CourseId::new).toList(),
                 new Preferences(parseAvoid(request.avoid(), limits)));
         Combinations result = generate.execute(student);

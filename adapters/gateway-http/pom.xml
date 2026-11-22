@@ -16,6 +16,9 @@
     <dependencies>
         <dependency><groupId>sched</groupId><artifactId>sched-application</artifactId></dependency>
         <dependency><groupId>org.springframework</groupId><artifactId>spring-webmvc</artifactId></dependency>
+        <!-- JSON de las cabeceras y los claims del token firmado (ADR 0004); sin librerías JWT. -->
+        <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+        <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId></dependency>
         <!-- El filtro del tamaño del cuerpo; en ejecución lo aporta Tomcat. -->
         <dependency>
             <groupId>jakarta.servlet</groupId>
@@ -31,11 +34,6 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>tools.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

@@ -4,11 +4,49 @@ La API que usa el portal de matrícula para pedir combinaciones, más las sondas
 en `SCHED_HTTP_PORT` (por defecto `8080`) en las instancias con rol `query` o `all`. En el
 despliegue con Docker se llega a ella a través de Traefik, en `localhost:8080`.
 
-> **Provisional.** Hoy el contexto del estudiante llega en el cuerpo de la solicitud, sin firmar.
-> Antes de exponer el motor a navegadores reales debe reemplazarse por un token firmado por la
-> institución ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)). Además, la
-> forma de la solicitud cambiará cuando se agreguen más filtros del estudiante y las 5 mejores
-> combinaciones ([ADR 0006](adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md)).
+> **Nota.** La forma de la solicitud cambiará cuando se agreguen más filtros del estudiante y las
+> 5 mejores combinaciones ([ADR 0006](adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md)).
+
+## Autenticación
+
+Las solicitudes de consulta (`/combinations`, `/alternatives`) exigen un **token firmado por la
+institución** ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) en
+`Authorization: Bearer <token>`. `/health` y `/ready` no lo necesitan.
+
+El token es un JWS compacto firmado con **EdDSA (Ed25519)**. El motor lo verifica con la llave
+pública de la institución (`SCHED_JWT_PUBLIC_KEYS`); sin la firma válida no confía en nada de su
+contenido.
+
+| Parte | Valor |
+|---|---|
+| Cabecera | `alg` = `EdDSA` (exacto; cualquier otro, incluido `none`, se rechaza). `kid` = llave con que se firmó (obligatorio si hay más de una llave configurada; así se rota). `typ` opcional (`JWT`) |
+| `iss` | Debe ser igual a `SCHED_JWT_ISSUER` |
+| `aud` | Debe ser, o contener, `SCHED_JWT_AUDIENCE` |
+| `sub` | **Identificador del estudiante** (`student_id`) |
+| `courses` | **Cursos habilitados** del estudiante (`eligible_courses`): arreglo de ids |
+| `iat`, `exp` | Obligatorios. `exp - iat` no puede superar `SCHED_JWT_MAX_TTL_S` (900 s por defecto) |
+| `nbf` | Opcional |
+
+Se admite una tolerancia de reloj de `SCHED_JWT_CLOCK_SKEW_S` (30 s por defecto) en `exp`, `nbf` e
+`iat`. Un token de más de 8 KB se rechaza sin procesarlo. `sub` y `courses` siguen las mismas
+reglas de ids y de cantidad de cursos que el cuerpo ([límites](#límites-de-la-solicitud)).
+
+Con un token válido:
+
+- `student_id` y `eligible_courses` **salen del token**; el cuerpo puede omitirlos. Si el cuerpo
+  también los trae y **no coinciden** con el token (el mismo estudiante y el mismo conjunto de
+  cursos), la respuesta es `400` en lugar de elegir uno en silencio.
+- Las preferencias (`avoid`), `selection` y `enrolled` siguen viniendo en el cuerpo: no las firma
+  la institución porque son elecciones del estudiante.
+
+Sin token, con uno inválido, vencido o de otro emisor, la respuesta es siempre la misma, para no
+dar pistas: `401` con `WWW-Authenticate: Bearer` y `{ "error": "unauthorized" }`. El motivo
+(genérico) y el `kid` quedan en el log del motor; el token y su contenido, nunca.
+
+Para desarrollo, `SCHED_AUTH=none` desactiva la verificación (el contexto vuelve a llegar en el
+cuerpo, sin firmar) y el motor lo advierte en el log al arrancar. **No lo use fuera de desarrollo
+ni de pruebas.** Para generar tokens de prueba: `keygen` y `token` del
+[simulador](simulador.md#token-firmado-de-prueba).
 
 Todos los nombres JSON van en `snake_case`.
 
@@ -21,19 +59,21 @@ estudiante. Cada combinación tiene exactamente un grupo por curso.
 
 ```http
 POST /combinations
+Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "student_id": "est-001",
-  "eligible_courses": ["MAT101", "FIS101"],
   "avoid": [{ "day": "monday", "start_minute": 360, "end_minute": 480 }]
 }
 ```
 
+(El estudiante y los cursos salen del token. Con `SCHED_AUTH=none` el cuerpo lleva además
+`student_id` y `eligible_courses`.)
+
 | Campo | Tipo | Obligatorio | Descripción |
 |---|---|---|---|
-| `student_id` | string | sí | Identificador del estudiante en la institución |
-| `eligible_courses` | string[] | sí | Cursos que puede matricular. Los repetidos se ignoran |
+| `student_id` | string | solo con `SCHED_AUTH=none` | Identificador del estudiante en la institución. Con token sale de `sub` |
+| `eligible_courses` | string[] | solo con `SCHED_AUTH=none` | Cursos que puede matricular. Los repetidos se ignoran. Con token salen de `courses` |
 | `avoid` | objeto[] | no | Ventanas que el estudiante prefiere evitar. Mismo formato que `slots` de la respuesta: `day` (`monday` … `sunday`, sin distinguir mayúsculas), `start_minute` y `end_minute` (`[inicio, fin)`, con `0 <= start_minute < end_minute <= 1440`). Ausente o vacío = sin preferencias |
 
 `avoid` es una **restricción suave**: nunca descarta combinaciones, solo las ordena (ver
@@ -147,6 +187,8 @@ Los ids (estudiante, curso y grupo) deben ser no vacíos y usar solo letras ASCI
 
 | Código | Cuándo | Cuerpo |
 |---|---|---|
+| `401` | Falta el token, o es inválido, vencido, de otro emisor o audiencia, o supera los 8 KB. Ver [Autenticación](#autenticación) | `{ "error": "unauthorized" }` y `WWW-Authenticate: Bearer` |
+| `400` | El cuerpo trae `student_id` o `eligible_courses` distintos a los del token | `{ "error": "invalid_request", "message": "student_id no coincide con el del token" }` |
 | `400` | El cuerpo falta, no es JSON válido, o un campo tiene un tipo incorrecto (por ejemplo `eligible_courses` como texto) | `{ "error": "invalid_request", "message": "..." }` |
 | `400` | Falta `student_id` o `eligible_courses`, o son nulos o vacíos; un id con caracteres no permitidos o demasiado largo; se excede un [límite](#límites-de-la-solicitud) | `{ "error": "invalid_request", "message": "falta student_id" }` |
 | `400` | Una ventana de `avoid` es inválida (día desconocido o ausente, `end_minute` no mayor que `start_minute`, fuera de `0..1440`) | `{ "error": "invalid_request", "message": "avoid[0]: ..." }` |
@@ -181,8 +223,9 @@ portal debería avisar al estudiante que los cupos podrían no estar actualizado
 ### Ejemplo con curl
 
 ```sh
-curl -X POST localhost:8080/combinations -H 'content-type: application/json' \
-  -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"]}'
+# TOKEN: ver docs/inicio-rapido.md (la institución lo firma; en desarrollo lo genera el simulador)
+curl -X POST localhost:8080/combinations -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{}'
 ```
 
 ## `POST /alternatives`
@@ -195,18 +238,18 @@ solo lo necesario, filtradas por cupo. Cada cambio indica qué conflicto resuelv
 
 ```http
 POST /alternatives
+Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "student_id": "est-001",
-  "eligible_courses": ["MAT101", "FIS101"],
   "avoid": [{ "day": "monday", "start_minute": 360, "end_minute": 480 }],
   "selection": { "MAT101": "MAT101-01", "FIS101": "FIS101-02" },
   "enrolled": ["MAT101-01"]
 }
 ```
 
-Los campos son los de [`/combinations`](#solicitud) más:
+La autenticación y los campos son los de [`/combinations`](#solicitud) (el estudiante y los cursos
+salen del token; con `SCHED_AUTH=none` el cuerpo trae también `student_id` y `eligible_courses`) más:
 
 | Campo | Tipo | Obligatorio | Descripción |
 |---|---|---|---|
@@ -290,14 +333,15 @@ penalización 0. La búsqueda es exacta: son las mejores de todas las posibles.
 
 Los de [`/combinations`](#errores): `400` (cuerpo inválido, campos ausentes, límites excedidos,
 `avoid` inválido, `selection` con un curso no pedido, un grupo de otro curso o un grupo vacío;
-cuerpo `{ "error": "invalid_request", "message": "..." }`), `413`, `422` por créditos, `503` y
+cuerpo `{ "error": "invalid_request", "message": "..." }`), `401`, `413`, `422` por créditos, `503` y
 `500`. Los límites de `selection` y `enrolled` son los de [cursos](#límites-de-la-solicitud).
 
 ### Ejemplo con curl
 
 ```sh
-curl -X POST localhost:8080/alternatives -H 'content-type: application/json' \
-  -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"],"selection":{"MAT101":"MAT101-01","FIS101":"FIS101-02"}}'
+curl -X POST localhost:8080/alternatives -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' \
+  -d '{"selection":{"MAT101":"MAT101-01","FIS101":"FIS101-02"}}'
 ```
 
 ## Sondas

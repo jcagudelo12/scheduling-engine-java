@@ -13,6 +13,9 @@ final class HttpErrors {
     private HttpErrors() {
     }
 
+    /** Cuerpo del 401: igual para todo motivo, para no dar pistas a quien prueba tokens. */
+    static final String UNAUTHORIZED_BODY = "{\"error\":\"unauthorized\"}";
+
     static ResponseEntity<InvalidRequestDto> invalidRequest(String message) {
         return ResponseEntity.badRequest().body(new InvalidRequestDto("invalid_request", message));
     }
