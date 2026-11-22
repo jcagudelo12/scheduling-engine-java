@@ -177,6 +177,7 @@ El motor se configura con variables de entorno (ver
 | `SCHED_NATS_STREAM` | `SCHED_CATALOG` | Stream de JetStream con el historial |
 | `SCHED_NATS_SUBJECT_PREFIX` | `sched` | Prefijo de los sujetos de NATS |
 | `SCHED_MAX_COMBINATIONS` | `200` | Combinaciones máximas por respuesta |
+| `SCHED_SOLVER` | `forward-checking` | Algoritmo de búsqueda: `forward-checking` o `backtracking` (línea base) |
 
 El simulador usa `SCHED_INGEST_URL` (por defecto `localhost:50051`) para saber dónde está la
 ingesta.

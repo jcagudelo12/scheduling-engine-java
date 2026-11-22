@@ -22,6 +22,8 @@ import sched.application.IngestCatalogEvent;
 import sched.application.IngestState;
 import sched.application.Readiness;
 import sched.solver.BacktrackingSolver;
+import sched.solver.ForwardCheckingSolver;
+import sched.solver.Solver;
 
 /** Composición: crea los adaptadores concretos y los inyecta en los casos de uso. */
 @Configuration
@@ -79,10 +81,20 @@ class EngineConfig {
     }
 
     @Bean
+    Solver solver(@Value("${sched.solver}") String name) {
+        return switch (name) {
+            case "forward-checking" -> new ForwardCheckingSolver();
+            case "backtracking" -> new BacktrackingSolver();
+            default -> throw new IllegalArgumentException(
+                    "SCHED_SOLVER desconocido: '" + name + "' (use forward-checking o backtracking)");
+        };
+    }
+
+    @Bean
     @ConditionalOnExpression(SERVES_QUERIES)
     CombinationsController combinationsController(
-            CatalogReplica replica, @Value("${sched.max-combinations}") int maxCombinations) {
-        return new CombinationsController(new GenerateCombinations(new BacktrackingSolver(), replica, maxCombinations));
+            Solver solver, CatalogReplica replica, @Value("${sched.max-combinations}") int maxCombinations) {
+        return new CombinationsController(new GenerateCombinations(solver, replica, maxCombinations));
     }
 
     // gRPC de ingesta, según el rol.
