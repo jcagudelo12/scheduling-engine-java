@@ -1,0 +1,279 @@
+{
+  "seed" : 42,
+  "profiles" : 500,
+  "budget" : 20000,
+  "evaluations" : 16589,
+  "distance" : {
+    "tables" : [ "A9", "A11", "A13" ],
+    "floor" : [ 0.06850190421595093, 0.058808057855576516, 0.03905036113268553 ],
+    "initial" : [ 0.31982757889546265, 0.2995538444320903, 0.3448900536391023 ],
+    "calibrated" : [ 0.23656753811460993, 0.12279810831442989, 0.20860657589765544 ],
+    "outOfSample" : [ 0.23483930526840033, 0.12872042002320355, 0.21297265187278325 ],
+    "totalInitial" : 0.32142382565555183,
+    "totalCalibrated" : 0.1893240741088984,
+    "totalOutOfSample" : 0.19217745905479572,
+    "totalValidationMean" : 0.20152262734295667,
+    "validationSeeds" : [ 7961, 15880, 23799, 31718, 39637 ]
+  },
+  "parameters" : [ {
+    "name" : "tiempo de navegar una asignatura (s)",
+    "paths" : [ "times.browseCourse.meanSeconds" ],
+    "lo" : 30.0,
+    "hi" : 360.0,
+    "initial" : 150.0,
+    "calibrated" : 219.03981363407334,
+    "atBound" : false,
+    "maxDelta" : 0.013833321545715344,
+    "identifiable" : true
+  }, {
+    "name" : "tiempo de elegir un grupo, solo A (s)",
+    "paths" : [ "times.chooseSection.meanSeconds" ],
+    "lo" : 15.0,
+    "hi" : 240.0,
+    "initial" : 70.0,
+    "calibrated" : 35.062612881524984,
+    "atBound" : false,
+    "maxDelta" : 0.01308153897880146,
+    "identifiable" : true
+  }, {
+    "name" : "tiempo de enviar un grupo (s)",
+    "paths" : [ "times.submitSection.meanSeconds" ],
+    "lo" : 5.0,
+    "hi" : 90.0,
+    "initial" : 20.0,
+    "calibrated" : 61.24927085565122,
+    "atBound" : false,
+    "maxDelta" : 0.005673336586407063,
+    "identifiable" : true
+  }, {
+    "name" : "tiempo de leer un rechazo (s)",
+    "paths" : [ "times.readRejection.meanSeconds" ],
+    "lo" : 10.0,
+    "hi" : 240.0,
+    "initial" : 60.0,
+    "calibrated" : 60.715425893401026,
+    "atBound" : false,
+    "maxDelta" : 0.009444396416724343,
+    "identifiable" : true
+  }, {
+    "name" : "tiempo de retirar un grupo (s)",
+    "paths" : [ "times.withdraw.meanSeconds" ],
+    "lo" : 10.0,
+    "hi" : 180.0,
+    "initial" : 45.0,
+    "calibrated" : 132.98546332900304,
+    "atBound" : false,
+    "maxDelta" : 0.0013511128319518284,
+    "identifiable" : false
+  }, {
+    "name" : "tiempo de confirmar (s)",
+    "paths" : [ "times.confirm.meanSeconds" ],
+    "lo" : 15.0,
+    "hi" : 300.0,
+    "initial" : 90.0,
+    "calibrated" : 113.65310786333185,
+    "atBound" : false,
+    "maxDelta" : 5.865032543867776E-4,
+    "identifiable" : false
+  }, {
+    "name" : "cv de los tiempos compartidos",
+    "paths" : [ "times.browseCourse.cv", "times.chooseSection.cv", "times.submitSection.cv", "times.readRejection.cv", "times.withdraw.cv", "times.confirm.cv" ],
+    "lo" : 0.2,
+    "hi" : 1.2,
+    "initial" : 0.6,
+    "calibrated" : 0.6633399991119826,
+    "atBound" : false,
+    "maxDelta" : 0.006970317178782187,
+    "identifiable" : true
+  }, {
+    "name" : "cv de la velocidad por estudiante",
+    "paths" : [ "behavior.speedCv" ],
+    "lo" : 0.0,
+    "hi" : 1.2,
+    "initial" : 0.5,
+    "calibrated" : 0.17789132541757174,
+    "atBound" : false,
+    "maxDelta" : 0.017276224311889826,
+    "identifiable" : true
+  }, {
+    "name" : "fracción que planeó antes (planificadores)",
+    "paths" : [ "behavior.plannerShare" ],
+    "lo" : 0.05,
+    "hi" : 0.2,
+    "initial" : 0.11100000000000002,
+    "calibrated" : 0.17908886069249275,
+    "atBound" : false,
+    "maxDelta" : 0.0038927342473304982,
+    "identifiable" : false
+  }, {
+    "name" : "conciencia de cruces del ensayo y error (media)",
+    "paths" : [ "behavior.clashAwareness" ],
+    "lo" : 0.0,
+    "hi" : 0.35,
+    "initial" : 0.15,
+    "calibrated" : 0.15649948501227018,
+    "atBound" : false,
+    "maxDelta" : 0.009933215176278543,
+    "identifiable" : true
+  }, {
+    "name" : "concentración de la conciencia (beta)",
+    "paths" : [ "behavior.awarenessConcentration" ],
+    "lo" : 1.0,
+    "hi" : 30.0,
+    "initial" : 4.0,
+    "calibrated" : 13.856331177718788,
+    "atBound" : false,
+    "maxDelta" : 0.01096286877655625,
+    "identifiable" : true
+  }, {
+    "name" : "peso de la jornada preferida",
+    "paths" : [ "behavior.preferenceStrength" ],
+    "lo" : 0.0,
+    "hi" : 6.0,
+    "initial" : 2.0,
+    "calibrated" : 3.201765845242955,
+    "atBound" : false,
+    "maxDelta" : 0.014309139169556895,
+    "identifiable" : true
+  }, {
+    "name" : "prob. de aplazar al agotar grupos",
+    "paths" : [ "behavior.deferOnExhaustProbability" ],
+    "lo" : 0.15,
+    "hi" : 0.45,
+    "initial" : 0.30999999999999994,
+    "calibrated" : 0.21704525981091038,
+    "atBound" : false,
+    "maxDelta" : 0.002234768064297843,
+    "identifiable" : false
+  }, {
+    "name" : "holgura de cupos (cupo = demanda x factor)",
+    "paths" : [ "offer.slackFactor" ],
+    "lo" : 0.9,
+    "hi" : 1.5,
+    "initial" : 1.1,
+    "calibrated" : 0.9832816393860057,
+    "atBound" : false,
+    "maxDelta" : 0.010704961309536326,
+    "identifiable" : true
+  }, {
+    "name" : "cupo relativo de los grupos populares",
+    "paths" : [ "offer.popularSeatShare" ],
+    "lo" : 0.4,
+    "hi" : 1.0,
+    "initial" : 0.7,
+    "calibrated" : 0.9060149104831691,
+    "atBound" : false,
+    "maxDelta" : 0.006045420250690492,
+    "identifiable" : true
+  }, {
+    "name" : "desigualdad del reparto de cupos",
+    "paths" : [ "offer.seatUnevenness" ],
+    "lo" : 0.0,
+    "hi" : 1.0,
+    "initial" : 0.7,
+    "calibrated" : 0.1795011082385195,
+    "atBound" : false,
+    "maxDelta" : 0.012239827511850265,
+    "identifiable" : true
+  }, {
+    "name" : "concentración de los bloques en la jornada del grupo",
+    "paths" : [ "offer.shiftAlignment" ],
+    "lo" : 0.6,
+    "hi" : 1.0,
+    "initial" : 0.85,
+    "calibrated" : 0.8345746779778226,
+    "atBound" : false,
+    "maxDelta" : 0.008734854750678478,
+    "identifiable" : true
+  }, {
+    "name" : "probabilidad de no recargar tras un rechazo",
+    "paths" : [ "behavior.staleViewProbability" ],
+    "lo" : 0.0,
+    "hi" : 1.0,
+    "initial" : 0.3,
+    "calibrated" : 0.09081130291817571,
+    "atBound" : false,
+    "maxDelta" : 0.004218183496102007,
+    "identifiable" : false
+  }, {
+    "name" : "probabilidad de bloque semanal adicional",
+    "paths" : [ "offer.extraBlockProbability" ],
+    "lo" : 0.0,
+    "hi" : 0.8,
+    "initial" : 0.2,
+    "calibrated" : 0.7370014217559966,
+    "atBound" : false,
+    "maxDelta" : 0.011397631554564192,
+    "identifiable" : true
+  }, {
+    "name" : "dispersión de la popularidad de los grupos",
+    "paths" : [ "offer.popularitySkew" ],
+    "lo" : 0.0,
+    "hi" : 2.0,
+    "initial" : 0.5,
+    "calibrated" : 0.5221575539874203,
+    "atBound" : false,
+    "maxDelta" : 0.0106540752637872,
+    "identifiable" : true
+  }, {
+    "name" : "tamaño objetivo de grupo",
+    "paths" : [ "offer.targetGroupSize" ],
+    "lo" : 12.0,
+    "hi" : 60.0,
+    "initial" : 25.0,
+    "calibrated" : 14.194914136353738,
+    "atBound" : false,
+    "maxDelta" : 0.010720656631161951,
+    "identifiable" : true
+  }, {
+    "name" : "llegadas por minuto (por ventana)",
+    "paths" : [ "arrivals.arrivalsPerMinute" ],
+    "lo" : 1.0,
+    "hi" : 40.0,
+    "initial" : 6.0,
+    "calibrated" : 21.530380610026278,
+    "atBound" : false,
+    "maxDelta" : 0.003522695295023359,
+    "identifiable" : false
+  }, {
+    "name" : "fracción que entra en la avalancha de apertura",
+    "paths" : [ "arrivals.rushShare" ],
+    "lo" : 0.0,
+    "hi" : 0.9,
+    "initial" : 0.3,
+    "calibrated" : 0.769178892154739,
+    "atBound" : false,
+    "maxDelta" : 0.004211466935374025,
+    "identifiable" : false
+  }, {
+    "name" : "media de la avalancha de apertura (s)",
+    "paths" : [ "arrivals.rushMeanSeconds" ],
+    "lo" : 30.0,
+    "hi" : 600.0,
+    "initial" : 120.0,
+    "calibrated" : 37.11767862974679,
+    "atBound" : true,
+    "maxDelta" : 0.00366324599945711,
+    "identifiable" : false
+  }, {
+    "name" : "umbral de casi perder el cupo (cupos)",
+    "paths" : [ "behavior.nearLossSeats" ],
+    "lo" : 1.0,
+    "hi" : 5.0,
+    "initial" : 2.0,
+    "calibrated" : 2.0,
+    "atBound" : false,
+    "maxDelta" : 0.011217337955562734,
+    "identifiable" : true
+  }, {
+    "name" : "mínimo de grupos por asignatura",
+    "paths" : [ "offer.minSections" ],
+    "lo" : 1.0,
+    "hi" : 3.0,
+    "initial" : 2.0,
+    "calibrated" : 3.0,
+    "atBound" : false,
+    "maxDelta" : 0.017589882381686905,
+    "identifiable" : true
+  } ]
+}

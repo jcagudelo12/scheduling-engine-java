@@ -9,6 +9,9 @@ bench/results*/*.txt
 bench/.venv/
 __pycache__/
 
+# Resultados crudos del experimento (los md y los json de resumen de simulation/experiments/ sí se versionan)
+simulation/experiments/**/results.csv
+
 # Salida de JMH ejecutado sin -rff
 jmh-result.*
 

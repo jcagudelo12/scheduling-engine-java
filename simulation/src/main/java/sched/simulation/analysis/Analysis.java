@@ -52,7 +52,7 @@ public final class Analysis {
 
     public record Result(Params params, int profiles, Map<String, Map<String, Summary>> descriptives,
                          MainHypothesis main, PairedComparison rTotal, ClashCheck clash, Validity validity,
-                         List<SubgroupRow> subgroups) {
+                         List<SubgroupRow> subgroups, Power.Check power) {
     }
 
     private Analysis() {
@@ -84,7 +84,8 @@ public final class Analysis {
                 Descriptive.mean(pairs.stream().mapToDouble(p -> p.b().coursesEnrolled()).toArray()),
                 gap, gapCi[0], gapCi[1], Math.abs(gap) > ENROLLED_GAP_WARNING, ENROLLED_GAP_WARNING);
 
-        return new Result(params, pairs.size(), descriptives, main, rTotal, clash, validity, subgroups(valid));
+        Power.Check power = Power.check(main.reduction().sd(), main.n(), params.alpha(), Power.MIN_EFFECT);
+        return new Result(params, pairs.size(), descriptives, main, rTotal, clash, validity, subgroups(valid), power);
     }
 
     static double reduction(Pair p) {

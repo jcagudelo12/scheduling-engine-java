@@ -103,7 +103,18 @@ public final class AnalysisReport {
             md.append(String.format(Locale.ROOT, "| %s | %s | %d | %s | %s |%n", s.variable(), s.value(), s.n(),
                     num(s.meanReduction()), num(s.medianReduction())));
         }
+        power(md, r.power());
         return md.toString();
+    }
+
+    private static void power(StringBuilder md, Power.Check p) {
+        md.append("\n## 7. Potencia y tamaño de muestra de la prueba principal\n\n");
+        md.append(String.format(Locale.ROOT, "Con la desviación estándar observada de r (%s) y un efecto mínimo de interés de %s "
+                        + "puntos sobre mu0 (aproximación normal unilateral, alfa = %s, corrección de Guenther): se necesitan "
+                        + "**%d perfiles** para una potencia de 0,80 y **%d** para 0,90. Con los **%d perfiles usados** la potencia "
+                        + "para ese efecto es %s.%n",
+                num(p.sd()), num(p.delta() * 100), p.alpha(), p.requiredFor80(), p.requiredFor90(), p.nUsed(),
+                num(p.powerAtN())));
     }
 
     private static void main(StringBuilder md, MainHypothesis m, Analysis.Params prm) {
@@ -207,6 +218,9 @@ public final class AnalysisReport {
             out.append(String.format(Locale.ROOT, "AVISO: diferencia de asignaturas matriculadas B - A = %s (> %.1f)%n",
                     num(r.validity().difference()), r.validity().threshold()));
         }
+        out.append(String.format(Locale.ROOT, "potencia: perfiles necesarios para efecto de %s puntos: %d (potencia 0,80), %d (0,90); "
+                        + "con %d perfiles la potencia es %s%n", num(r.power().delta() * 100), r.power().requiredFor80(),
+                r.power().requiredFor90(), r.power().nUsed(), num(r.power().powerAtN())));
         return out.toString();
     }
 }

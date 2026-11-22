@@ -25,6 +25,27 @@ public final class PairedResults {
     private PairedResults() {
     }
 
+    /** Empareja los resultados de una corrida (las listas van en el mismo orden de perfiles). */
+    public static List<Pair> of(List<sched.simulation.experiment.StudentResult> reactive,
+                                List<sched.simulation.experiment.StudentResult> assisted) {
+        if (reactive.size() != assisted.size()) {
+            throw new IllegalArgumentException("las dos condiciones deben tener los mismos perfiles");
+        }
+        List<Pair> pairs = new ArrayList<>();
+        for (int i = 0; i < reactive.size(); i++) {
+            sched.simulation.experiment.StudentResult a = reactive.get(i);
+            sched.simulation.experiment.StudentResult b = assisted.get(i);
+            sched.simulation.experiment.Profile p = a.profile();
+            pairs.add(new Pair(p.id(), p.program(), p.semester(), p.courses().size(), p.window(), observation(a),
+                    observation(b)));
+        }
+        return pairs;
+    }
+
+    private static Observation observation(sched.simulation.experiment.StudentResult r) {
+        return new Observation(r.tTotalSeconds(), r.rTraslape(), r.rCupo(), r.rTotal(), r.coursesEnrolled());
+    }
+
     public static List<Pair> read(Path path) {
         try {
             return parse(Files.readAllLines(path), path.toString());

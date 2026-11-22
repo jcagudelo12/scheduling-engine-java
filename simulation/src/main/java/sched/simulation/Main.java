@@ -4,7 +4,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import sched.simulation.analysis.AnalysisCli;
+import sched.simulation.calibration.CalibrationCli;
 import sched.simulation.experiment.ExperimentCli;
+import sched.simulation.sensitivity.SensitivityCli;
 import sched.proto.institution.v1.LoadCatalogResponse;
 import sched.proto.institution.v1.SyncStatus;
 
@@ -16,6 +18,8 @@ import sched.proto.institution.v1.SyncStatus;
  * java -jar simulation/target/sched-simulation.jar load [escenario.json] [seq]
  * java -jar simulation/target/sched-simulation.jar seats &lt;seq&gt; &lt;grupo&gt; &lt;cupos&gt;
  * java -jar simulation/target/sched-simulation.jar experiment --config &lt;json&gt; --out &lt;dir&gt; [--seed n] [--profiles n] [--analyze]
+ * java -jar simulation/target/sched-simulation.jar calibrate --config &lt;json&gt; --out &lt;dir&gt; [--budget n] [--profiles n] [--seed n]
+ * java -jar simulation/target/sched-simulation.jar sensitivity --config &lt;json&gt; --out &lt;dir&gt; [--profiles n] [--replications r]
  * java -jar simulation/target/sched-simulation.jar calibration --results &lt;results.csv&gt;
  * java -jar simulation/target/sched-simulation.jar analyze --results &lt;results.csv&gt; [--out &lt;dir&gt;] [--alpha 0.05] [--mu0 0.20] [--seed n]
  * </pre>
@@ -32,6 +36,11 @@ public final class Main {
               seats <seq> <grupo> <cupos>        envía un cambio de cupo al motor
               experiment --config <json> --out <dir> [--seed n] [--profiles n] [--analyze]
                                                  experimento pareado A (reactivo) frente a B (asistido)
+              calibrate --config <json> --out <dir> [--budget n] [--profiles n] [--seed n]
+                                                 busca los parámetros del flujo A que reproducen la consulta
+                                                 (calibrated.json, calibration.md)
+              sensitivity --config <json> --out <dir> [--profiles n] [--replications r]
+                                                 sensibilidad de la conclusión principal (sensitivity.md y .json)
               analyze --results <csv> [--out <dir>] [--alpha 0.05] [--mu0 0.20] [--seed n]
                                                  análisis estadístico del experimento (analysis.md y analysis.json)
               calibration --results <csv> [--calibration <json>]
@@ -66,6 +75,8 @@ public final class Main {
             }
             case "experiment" -> designHolds(ExperimentCli.experiment(List.of(args).subList(1, args.length)));
             case "analyze" -> designHolds(AnalysisCli.analyze(List.of(args).subList(1, args.length)));
+            case "calibrate" -> CalibrationCli.calibrate(List.of(args).subList(1, args.length));
+            case "sensitivity" -> SensitivityCli.sensitivity(List.of(args).subList(1, args.length));
             case "calibration" -> ExperimentCli.calibration(List.of(args).subList(1, args.length));
             default -> fail(USAGE);
         }
