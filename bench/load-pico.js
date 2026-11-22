@@ -15,7 +15,8 @@
 // STORM_RATE (segundos), así que k6 sabe qué grupos están llenos en cada instante.
 //
 // Variables: TARGET, START_MS (hora absoluta de inicio de la rampa), RATE (pico, solicitudes/s), RAMP, HOLD, DOWN (segundos), ALT_SHARE (0,2),
-// COMBOS_FILE, ALTS_FILE, DRAIN_FILE, STORM_AT_MS, STORM_RATE (0 = sin ráfaga), E1_SAMPLE (1 de cada n
+// COMBOS_FILE, ALTS_FILE, TOKENS_COMBOS_FILE y TOKENS_ALTS_FILE (opcionales: con SCHED_AUTH=jwt, tokens Bearer en el
+// mismo orden que los cuerpos; los genera profile-tokens.py), DRAIN_FILE, STORM_AT_MS, STORM_RATE (0 = sin ráfaga), E1_SAMPLE (1 de cada n
 // respuestas de /combinations se examina en detalle), OUT (resumen JSON).
 import http from 'k6/http';
 import exec from 'k6/execution';
@@ -41,6 +42,13 @@ const combos = new SharedArray('combos', () =>
 );
 const alts = new SharedArray('alts', () =>
   ALT_SHARE > 0 ? JSON.parse(open('./' + (__ENV.ALTS_FILE || 'alternatives.json'))).map((s) => JSON.stringify(s)) : [],
+);
+// Tokens Bearer (opcional), en paralelo a los cuerpos: con ellos el motor verifica la firma EdDSA en cada solicitud.
+const tokensCombos = new SharedArray('tokens-combos', () =>
+  __ENV.TOKENS_COMBOS_FILE ? JSON.parse(open(__ENV.TOKENS_COMBOS_FILE)) : [],
+);
+const tokensAlts = new SharedArray('tokens-alts', () =>
+  __ENV.TOKENS_ALTS_FILE ? JSON.parse(open(__ENV.TOKENS_ALTS_FILE)) : [],
 );
 const drain = new SharedArray('drain', () =>
   STORM_RATE > 0
@@ -170,9 +178,14 @@ export default function () {
   const endpoint = isAlt ? 'alternatives' : 'combinations';
   const tags = { phase, endpoint };
   const body = isAlt ? alts[i % alts.length] : combos[i % combos.length];
+  const headers = { 'content-type': 'application/json' };
+  const tokens = isAlt ? tokensAlts : tokensCombos;
+  if (tokens.length > 0) {
+    headers.authorization = 'Bearer ' + tokens[(isAlt ? i % alts.length : i % combos.length) % tokens.length];
+  }
 
   const res = http.post(TARGET + '/' + endpoint, body, {
-    headers: { 'content-type': 'application/json' },
+    headers,
     tags,
   });
   const now = Date.now();
