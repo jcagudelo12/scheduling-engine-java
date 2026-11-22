@@ -12,6 +12,7 @@ import sched.application.Alternatives;
 import sched.application.Combinations;
 import sched.application.ScoredSchedule;
 import sched.domain.CourseId;
+import sched.domain.Preferences;
 import sched.domain.Schedule;
 import sched.domain.Section;
 import sched.domain.SectionId;
@@ -66,6 +67,7 @@ final class AssistedStudent {
     private final Tally tally;
     private final SplittableRandom timeRandom;
     private final SplittableRandom choiceRandom;
+    private final StudentTraits traits;
 
     private final List<CourseId> active = new ArrayList<>();
     private Map<CourseId, Section> plan = new HashMap<>();
@@ -82,6 +84,20 @@ final class AssistedStudent {
         this.tally = tally;
         this.timeRandom = Seeds.rng(config.seed(), "behavior-time", profile.index());
         this.choiceRandom = Seeds.rng(config.seed(), "behavior-choice", profile.index());
+        this.traits = StudentTraits.draw(config, profile.index());
+    }
+
+    private double time(ExperimentConfig.Dist dist) {
+        return traits.time(dist, timeRandom);
+    }
+
+    /** Revisar {@code count} elementos de una lista del motor, uno a uno. */
+    private double review(int count, ExperimentConfig.Dist perItem) {
+        double total = 0;
+        for (int i = 0; i < count; i++) {
+            total += time(perItem);
+        }
+        return total;
     }
 
     void start() {
@@ -90,7 +106,8 @@ final class AssistedStudent {
     }
 
     private StudentContext context(List<CourseId> courses) {
-        return new StudentContext(new StudentId(profile.id()), List.copyOf(courses), profile.preference().avoiding());
+        Preferences preferences = config.engine().usePreferences() ? profile.preference().avoiding() : Preferences.NONE;
+        return new StudentContext(new StudentId(profile.id()), List.copyOf(courses), preferences);
     }
 
     private void requestCombinations() {
@@ -109,7 +126,7 @@ final class AssistedStudent {
                 List<CourseId> impossible = active.stream().filter(c -> !hasSeats(c)).toList();
                 if (!impossible.isEmpty()) {
                     active.removeAll(impossible);
-                    spent += config.times().readRejection().sample(timeRandom);
+                    spent += time(config.times().readRejection());
                     continue;
                 }
                 boolean dropped = false;
@@ -127,14 +144,15 @@ final class AssistedStudent {
                 }
                 if (!dropped) {
                     active.removeLast();
-                    spent += config.times().readRejection().sample(timeRandom);
+                    spent += time(config.times().readRejection());
                     continue;
                 }
             }
             List<ScoredSchedule> schedules = found;
             schedules.forEach(s -> verify(s.schedule(), "una combinación"));
             Schedule picked = pickCombination(schedules);
-            queue.after(spent + config.times().reviewCombinations().sample(timeRandom), () -> {
+            int reviewed = Math.min(schedules.size(), config.behavior().combinationsReviewed());
+            queue.after(spent + review(reviewed, config.times().reviewCombination()), () -> {
                 plan = byCourse(picked);
                 submitNext();
             });
@@ -155,7 +173,7 @@ final class AssistedStudent {
         if (platform.enrolledOf(profile.index()).containsKey(course)) {
             platform.withdraw(profile.index(), course);
             tally.withdrawals++;
-            return config.times().withdraw().sample(timeRandom);
+            return time(config.times().withdraw());
         }
         return 0;
     }
@@ -163,7 +181,18 @@ final class AssistedStudent {
     private Schedule pickCombination(List<ScoredSchedule> schedules) {
         int index = 0;
         if (choiceRandom.nextDouble() >= config.engine().pickBestProbability()) {
-            index = choiceRandom.nextInt(Math.min(schedules.size(), config.engine().pickTop()));
+            // Entre las primeras combinaciones, con más peso las de grupos populares (como en A).
+            int top = Math.min(schedules.size(), config.engine().pickTop());
+            double[] weights = new double[top];
+            for (int i = 0; i < top; i++) {
+                double logSum = 0;
+                List<Section> chosen = schedules.get(i).schedule().sections();
+                for (Section s : chosen) {
+                    logSum += Math.log(Popularity.of(config, s.id()));
+                }
+                weights[i] = Math.exp(logSum / Math.max(1, chosen.size()));
+            }
+            index = Seeds.pick(choiceRandom, weights);
         }
         return schedules.get(index).schedule();
     }
@@ -175,7 +204,11 @@ final class AssistedStudent {
             Section wanted = plan.get(course);
             Section has = mine.get(course);
             if (has == null || !has.id().equals(wanted.id())) {
-                queue.after(config.times().submitChosen().sample(timeRandom), () -> submit(course));
+                // En la plataforma real hay que ir a la asignatura (navegar) y enviar el grupo: lo
+                // mismo que paga A.
+                queue.after(time(config.times().browseCourse()) * config.behavior().assistedBrowseFactor()
+                        + time(config.times().submitSection()),
+                        () -> submit(course));
                 return;
             }
         }
@@ -199,7 +232,7 @@ final class AssistedStudent {
     }
 
     private void afterRejection() {
-        queue.after(config.times().readRejection().sample(timeRandom), this::askAlternatives);
+        queue.after(time(config.times().readRejection()), this::askAlternatives);
     }
 
     private void askAlternatives() {
@@ -219,7 +252,7 @@ final class AssistedStudent {
                     for (CourseId c : impossible) {
                         spent += abandon(c);
                     }
-                    spent += config.times().readRejection().sample(timeRandom);
+                    spent += time(config.times().readRejection());
                     continue;
                 }
                 boolean dropped = false;
@@ -237,13 +270,14 @@ final class AssistedStudent {
                 }
                 if (!dropped) {
                     spent += abandon(active.getLast());
-                    spent += config.times().readRejection().sample(timeRandom);
+                    spent += time(config.times().readRejection());
                     continue;
                 }
             }
             found.forEach(a -> verify(a.schedule(), "una alternativa"));
             Alternatives.Alternative first = found.getFirst();
-            queue.after(spent + config.times().reviewAlternatives().sample(timeRandom), () -> adopt(first));
+            int reviewed = Math.min(found.size(), config.behavior().alternativesReviewed());
+            queue.after(spent + review(reviewed, config.times().reviewAlternative()), () -> adopt(first));
             return;
         }
     }
@@ -273,7 +307,7 @@ final class AssistedStudent {
             if (enrolled != null && !enrolled.id().equals(next.get(course).id())) {
                 platform.withdraw(profile.index(), course);
                 tally.withdrawals++;
-                delay += config.times().withdraw().sample(timeRandom);
+                delay += time(config.times().withdraw());
             }
         }
         plan = next;
@@ -281,7 +315,7 @@ final class AssistedStudent {
     }
 
     private void confirm(double extra) {
-        queue.after(extra + config.times().confirm().sample(timeRandom), () -> tally.finishedAt = queue.now());
+        queue.after(extra + time(config.times().confirm()), () -> tally.finishedAt = queue.now());
     }
 
     private void count(long nanos) {

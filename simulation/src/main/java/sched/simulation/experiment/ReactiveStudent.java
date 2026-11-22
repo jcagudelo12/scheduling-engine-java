@@ -21,8 +21,9 @@ import sched.domain.SectionId;
  * preferida con ruido, entre los que ve con cupo) y lo envía; la plataforma lo acepta o rechaza.
  * <ul>
  *   <li>Rechazo por cruce o cupo: lee el mensaje y prueba otro grupo de la misma asignatura. Antes
- *       de enviar, con probabilidad {@code clashAwareness}, nota a simple vista un cruce y descarta
- *       el grupo sin gastar un envío.</li>
+ *       de enviar, con la probabilidad de conciencia de cruces propia del estudiante
+ *       ({@link StudentTraits}), nota a simple vista un cruce y descarta el grupo sin gastar un
+ *       envío.</li>
  *   <li>Sin grupos con cupo en la asignatura: la aplaza.</li>
  *   <li>Si agota los grupos con cupo por cruces: con probabilidad {@code deferOnExhaustProbability}
  *       (o al agotar sus retrocesos) la aplaza; si no, retrocede: retira un grupo ya inscrito que
@@ -42,12 +43,19 @@ final class ReactiveStudent {
     private final Tally tally;
     private final SplittableRandom timeRandom;
     private final SplittableRandom choiceRandom;
+    private final StudentTraits traits;
 
     private final Deque<CourseId> pending = new ArrayDeque<>();
     private final Map<CourseId, Set<SectionId>> blocked = new HashMap<>();
     private final Map<CourseId, Set<SectionId>> avoided = new HashMap<>();
     private final Map<CourseId, Integer> retreats = new HashMap<>();
-    private final Set<CourseId> clashPending = new HashSet<>();
+    /**
+     * El estudiante ya se topó con un cruce (se lo rechazó la plataforma o lo notó él): desde ahí y
+     * hasta confirmar está "resolviendo un cruce", que es el contexto de A13 (ver CalibrationReport).
+     */
+    private boolean resolvingClash;
+    /** Grupos que el estudiante quería (se cruzaban) y vio llenos al volver: cupo perdido mientras resolvía el cruce. */
+    private final Set<SectionId> lostWanted = new HashSet<>();
     /** Cupos que el estudiante ve en la página de la asignatura: los de la última vez que se cargó. */
     private Map<SectionId, Integer> seen = new HashMap<>();
     private CourseId current;
@@ -64,6 +72,11 @@ final class ReactiveStudent {
         this.tally = tally;
         this.timeRandom = Seeds.rng(config.seed(), "behavior-time", profile.index());
         this.choiceRandom = Seeds.rng(config.seed(), "behavior-choice", profile.index());
+        this.traits = StudentTraits.draw(config, profile.index());
+    }
+
+    private double time(ExperimentConfig.Dist dist) {
+        return traits.time(dist, timeRandom);
     }
 
     void start() {
@@ -73,12 +86,12 @@ final class ReactiveStudent {
 
     private void nextCourse() {
         if (pending.isEmpty()) {
-            queue.after(config.times().confirm().sample(timeRandom), () -> tally.finishedAt = queue.now());
+            queue.after(time(config.times().confirm()), () -> tally.finishedAt = queue.now());
             return;
         }
         current = pending.poll();
         refresh();
-        queue.after(config.times().browseCourse().sample(timeRandom), this::pick);
+        queue.after(time(config.times().browseCourse()), this::pick);
     }
 
     /** Carga la página de la asignatura: los cupos que se ven quedan fijos hasta la siguiente carga. */
@@ -86,6 +99,13 @@ final class ReactiveStudent {
         seen = new HashMap<>();
         for (Section s : sections.getOrDefault(current, List.of())) {
             seen.put(s.id(), platform.available(s.id()));
+        }
+    }
+
+    /** Tras un rechazo recarga la página, salvo con probabilidad {@code staleViewProbability}: sigue con los cupos viejos. */
+    private void reloadAfterRejection() {
+        if (choiceRandom.nextDouble() >= config.behavior().staleViewProbability()) {
+            refresh();
         }
     }
 
@@ -100,14 +120,18 @@ final class ReactiveStudent {
         List<Section> withSeats = new ArrayList<>();
         for (Section s : sections.getOrDefault(current, List.of())) {
             if (seen.getOrDefault(s.id(), 0) <= 0) {
+                if (blockedHere.contains(s.id()) && lostWanted.add(s.id())) {
+                    tally.rCupoInClash++;
+                }
                 continue;
             }
             withSeats.add(s);
             if (blockedHere.contains(s.id()) || avoidedHere.contains(s.id())) {
                 continue;
             }
-            if (clashesWithEnrolled(s) && choiceRandom.nextDouble() < config.behavior().clashAwareness()) {
+            if (clashesWithEnrolled(s) && choiceRandom.nextDouble() < traits.awareness()) {
                 blockedHere.add(s.id());
+                resolvingClash = true;
                 continue;
             }
             candidates.add(s);
@@ -117,13 +141,13 @@ final class ReactiveStudent {
             return;
         }
         chosen = weightedPick(candidates);
-        queue.after(config.times().chooseAndSubmit().sample(timeRandom), this::submit);
+        queue.after(time(config.times().chooseSection()) + time(config.times().submitSection()), this::submit);
     }
 
     private Section weightedPick(List<Section> candidates) {
         double strength = config.behavior().preferenceStrength();
         double[] weights = candidates.stream()
-                .mapToDouble(s -> Math.exp(strength * profile.preference().fractionIn(s)))
+                .mapToDouble(s -> Math.exp(strength * profile.preference().fractionIn(s)) * Popularity.of(config, s.id()))
                 .toArray();
         return candidates.get(Seeds.pick(choiceRandom, weights));
     }
@@ -141,7 +165,6 @@ final class ReactiveStudent {
         if (submissions >= config.behavior().maxSubmissions()) {
             // Tope de seguridad: el resto queda sin inscribir.
             pending.clear();
-            clashPending.clear();
             nextCourse();
             return;
         }
@@ -149,38 +172,38 @@ final class ReactiveStudent {
         int before = platform.available(chosen.id());
         switch (platform.submit(profile.index(), chosen)) {
             case ACCEPTED -> {
-                if (clashPending.remove(current) && before <= config.behavior().nearLossSeats()) {
+                if (resolvingClash && before <= config.behavior().nearLossSeats()) {
                     tally.nearLoss++;
                 }
                 nextCourse();
             }
             case CLASH -> {
                 tally.rTraslape++;
-                clashPending.add(current);
+                resolvingClash = true;
                 blocked.get(current).add(chosen.id());
-                refresh();
-                queue.after(config.times().readRejection().sample(timeRandom), this::pick);
+                reloadAfterRejection();
+                queue.after(time(config.times().readRejection()), this::pick);
             }
             case FULL -> {
                 tally.rCupo++;
-                if (clashPending.contains(current)) {
+                seen.put(chosen.id(), 0); // el rechazo le dice que ese grupo está lleno, aunque no recargue
+                if (resolvingClash) {
                     tally.rCupoInClash++;
                 }
-                refresh();
-                queue.after(config.times().readRejection().sample(timeRandom), this::pick);
+                reloadAfterRejection();
+                queue.after(time(config.times().readRejection()), this::pick);
             }
         }
     }
 
     /** Ningún grupo elegible: aplaza la asignatura o retrocede. {@code withSeats}: grupos con cupo ahora. */
     private void exhausted(List<Section> withSeats) {
-        double read = config.times().readRejection().sample(timeRandom);
+        double read = time(config.times().readRejection());
         boolean defer = withSeats.isEmpty()
                 || choiceRandom.nextDouble() < config.behavior().deferOnExhaustProbability()
                 || retreats.getOrDefault(current, 0) >= config.behavior().maxRetreatsPerCourse();
         List<CourseId> victims = defer ? List.of() : victimsFor(withSeats);
         if (defer || victims.isEmpty()) {
-            clashPending.remove(current);
             queue.after(read, this::nextCourse);
             return;
         }
@@ -194,7 +217,7 @@ final class ReactiveStudent {
         blocked.get(current).clear();
         refresh();
         pending.addLast(victim);
-        queue.after(read + config.times().withdraw().sample(timeRandom), this::pick);
+        queue.after(read + time(config.times().withdraw()), this::pick);
     }
 
     /** Asignaturas ya inscritas cuyo grupo se cruza con algún grupo con cupo de la actual. */

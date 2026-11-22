@@ -29,7 +29,8 @@ class ExperimentTest {
         ExperimentConfig base = ExperimentConfig.defaults().withSeed(seed).withProfiles(profiles);
         ExperimentConfig.EngineParams e = base.engine();
         return base.withEngine(new ExperimentConfig.EngineParams(
-                e.solver(), e.maxResults(), e.maxAlternatives(), "zero", e.pickBestProbability(), e.pickTop()));
+                e.solver(), e.maxResults(), e.maxAlternatives(), "zero", e.pickBestProbability(), e.pickTop(),
+                e.usePreferences()));
     }
 
     private static String csv(Experiment.Result result) {
@@ -79,7 +80,7 @@ class ExperimentTest {
         ExperimentConfig config = base.withOffer(new ExperimentConfig.OfferParams(o.file(), 50, o.maxCredits(),
                 o.coursesPerSemester(), o.sharedCoursesPerSemester(), o.sharedUpToSemester(), o.creditsMin(),
                 o.creditsMax(), o.minSections(), o.maxSections(), o.targetGroupSize(), 500, o.sectionShift(),
-                o.shiftAlignment(), o.popularSeatShare(), o.seatUnevenness()));
+                o.shiftAlignment(), o.popularSeatShare(), o.seatUnevenness(), o.extraBlockProbability(), o.popularitySkew()));
 
         Experiment.Result result = Experiment.run(config);
 
@@ -111,9 +112,12 @@ class ExperimentTest {
         ExperimentConfig base = small(1, 0);
         ExperimentConfig.Dist ten = new ExperimentConfig.Dist(10, 0);
         ExperimentConfig.Dist five = new ExperimentConfig.Dist(5, 0);
-        return base.withTimes(new ExperimentConfig.TimeParams(five, five, five, five, five, ten, ten, five))
-                .withEngine(new ExperimentConfig.EngineParams("forward-checking", 50, 5, "zero", 1.0, 5))
-                .withPlatform(new ExperimentConfig.PlatformParams(2.0));
+        // browse, choose, submit, read, withdraw, confirm, reviewCombination, reviewAlternative
+        return base.withTimes(new ExperimentConfig.TimeParams(five, five, five, five, five, five, ten, ten))
+                .withEngine(new ExperimentConfig.EngineParams("forward-checking", 50, 5, "zero", 1.0, 5, true))
+                .withPlatform(new ExperimentConfig.PlatformParams(2.0))
+                // Sin heterogeneidad entre estudiantes (velocidad igual para todos): tiempos exactos.
+                .withBehavior(new ExperimentConfig.BehaviorParams(2.0, 0.15, 0, 0.9, 4.0, 0, 0.31, 2, 60, 10, 2, 0, 5, 3, 1.0));
     }
 
     private static Offer oneCourseTwoSections() {
@@ -133,10 +137,11 @@ class ExperimentTest {
 
     @Test
     void engineOffersAFullSectionInsideTheEventLatencyAndTheAlternativeFixesIt() {
-        // U1 envía C1-01 en t=15 y toma su único cupo; el evento llega al motor en t=17.
-        // U2 consulta en t=16: la réplica aún muestra el cupo, el motor sugiere C1-01 y se llena.
+        // U1: revisa 2 combinaciones (20 s), navega y envía (10 s) y toma el único cupo de C1-01 en t=30;
+        // el evento llega al motor en t=32. U2 consulta en t=31: la réplica aún muestra el cupo, el
+        // motor sugiere C1-01 primero y se llena.
         List<StudentResult> results = Experiment.runCondition(handBuilt(), oneCourseTwoSections(),
-                List.of(student(0, 0), student(1, 16)), Condition.ASSISTED);
+                List.of(student(0, 0), student(1, 31)), Condition.ASSISTED);
 
         StudentResult first = results.get(0);
         assertEquals(0, first.rCupo());
@@ -147,14 +152,15 @@ class ExperimentTest {
         assertEquals(0, second.rTraslape());
         assertEquals(1, second.coursesEnrolled());
         assertEquals(2, second.engineCalls());
-        // 10 revisar + 5 enviar (rechazado) + 5 leer + 10 revisar alternativas + 5 enviar + 5 confirmar.
-        assertEquals(40.0, second.tTotalSeconds(), 1e-9);
+        // 20 revisar (2 combinaciones) + 5 navegar + 5 enviar (rechazado) + 5 leer + 10 revisar
+        // (1 alternativa) + 5 navegar + 5 enviar + 5 confirmar: B paga navegar y enviar cada grupo.
+        assertEquals(60.0, second.tTotalSeconds(), 1e-9);
     }
 
     @Test
     void ifTheEventHasArrivedTheEngineDoesNotOfferTheFullSection() {
         List<StudentResult> results = Experiment.runCondition(handBuilt(), oneCourseTwoSections(),
-                List.of(student(0, 0), student(1, 18)), Condition.ASSISTED);
+                List.of(student(0, 0), student(1, 33)), Condition.ASSISTED);
 
         assertEquals(0, results.get(1).rCupo());
         assertEquals(1, results.get(1).engineCalls());
@@ -173,7 +179,7 @@ class ExperimentTest {
         Offer offer = new Offer(List.of(new SectionSeats(s1, 1), new SectionSeats(s2, 5)),
                 List.of(new Course(c1, 3)), new EnrollmentRules(20));
         ExperimentConfig config = handBuilt().withBehavior(new ExperimentConfig.BehaviorParams(
-                50, 0, 0, 2, 60, 10, 2));
+                50, 0, 0, 0, 1, 0, 0, 2, 60, 10, 2, 0, 5, 3, 1.0));
 
         List<StudentResult> results = Experiment.runCondition(config, offer,
                 List.of(student(0, 0), student(1, 0)), Condition.REACTIVE);
@@ -326,11 +332,56 @@ class ExperimentTest {
                 o.maxCredits(), o.coursesPerSemester(), o.sharedCoursesPerSemester(), o.sharedUpToSemester(),
                 o.creditsMin(), o.creditsMax(), o.minSections(), o.maxSections(), o.targetGroupSize(),
                 o.minSeatsPerSection(), o.sectionShift(), o.shiftAlignment(), o.popularSeatShare(),
-                o.seatUnevenness()));
+                o.seatUnevenness(), o.extraBlockProbability(), o.popularitySkew()));
 
         Experiment.Result result = Experiment.run(config);
 
         assertEquals(7, result.setup().offer().sections().size());
         assertEquals(0, result.assisted().stream().mapToInt(StudentResult::rTraslape).sum());
+    }
+
+    @Test
+    void equivalentActionsCostTheSameInAAndB() {
+        // Una asignatura con un solo grupo, sin competencia. A: navegar 5 + elegir 5 + enviar 5 + confirmar 5.
+        // B: revisar 1 combinación 10 + navegar 5 + enviar 5 + confirmar 5. Navegar, enviar y confirmar
+        // cuestan igual; solo difieren elegir (A) y revisar la combinación (B).
+        CourseId c1 = new CourseId("C1");
+        Section only = new Section(new SectionId("C1-01"), c1,
+                List.of(TimeSlot.of(Weekday.MONDAY, 360, 480).orElseThrow()), 5);
+        Offer offer = new Offer(List.of(new SectionSeats(only, 5)), List.of(new Course(c1, 3)), new EnrollmentRules(20));
+
+        StudentResult a = Experiment.runCondition(handBuilt(), offer, List.of(student(0, 0)), Condition.REACTIVE).getFirst();
+        StudentResult b = Experiment.runCondition(handBuilt(), offer, List.of(student(0, 0)), Condition.ASSISTED).getFirst();
+
+        assertEquals(20.0, a.tTotalSeconds(), 1e-9);
+        assertEquals(25.0, b.tTotalSeconds(), 1e-9);
+    }
+
+    @Test
+    void studentTraitsAreHeterogeneousButIdenticalForTheSameStudent() {
+        ExperimentConfig config = ExperimentConfig.defaults();
+        double[] awareness = new double[400];
+        double[] speed = new double[400];
+        for (int i = 0; i < awareness.length; i++) {
+            StudentTraits t = StudentTraits.draw(config, i);
+            assertEquals(t, StudentTraits.draw(config, i));
+            awareness[i] = t.awareness();
+            speed[i] = t.speed();
+        }
+        double high = java.util.Arrays.stream(awareness).filter(x -> x > 0.6).count() / (double) awareness.length;
+        assertTrue(high > 0.04 && high < 0.25, "planificadores: " + high);
+        assertTrue(java.util.Arrays.stream(awareness).max().orElse(0) > java.util.Arrays.stream(awareness).average().orElse(0) + 0.3);
+        assertEquals(1.0, java.util.Arrays.stream(speed).average().orElse(0), 0.15);
+        assertTrue(java.util.Arrays.stream(speed).max().orElse(0) > 1.5);
+    }
+
+    @Test
+    void valuesCanBeSetByPath() {
+        ExperimentConfig config = ExperimentConfig.defaults().withValues(java.util.Map.of(
+                "times.browseCourse.meanSeconds", 99.0, "behavior.nearLossSeats", 3.4));
+        assertEquals(99.0, config.times().browseCourse().meanSeconds(), 0);
+        assertEquals(3, config.behavior().nearLossSeats());
+        assertEquals(ExperimentConfig.defaults().times().confirm(), config.times().confirm());
+        assertThrows(IllegalArgumentException.class, () -> config.withValues(java.util.Map.of("times.nope", 1.0)));
     }
 }

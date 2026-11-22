@@ -70,7 +70,7 @@ final class OfferGenerator {
 
             int sections = Math.max(p.minSections(), Math.min(p.maxSections(),
                     (int) Math.ceil(d / p.targetGroupSize()) + rng.nextInt(2)));
-            int blocks = blocksFor(credits, rng);
+            int blocks = blocksFor(credits, rng) + (rng.nextDouble() < p.extraBlockProbability() ? 1 : 0);
             int total = Math.max(sections * p.minSeatsPerSection(), (int) Math.ceil(d * p.slackFactor()));
 
             List<Section> built = new ArrayList<>();

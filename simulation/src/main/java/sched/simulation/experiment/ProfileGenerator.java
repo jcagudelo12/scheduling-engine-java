@@ -75,17 +75,41 @@ final class ProfileGenerator {
         return chosen;
     }
 
-    /** Poisson dentro de cada ventana: tiempos entre llegadas exponenciales, en orden de perfil. */
+    /**
+     * Llegadas por ventana: una fracción {@code rushShare} entra en la avalancha de la apertura
+     * (exponencial desde el inicio de la ventana) y el resto llega como proceso de Poisson. Los
+     * tiempos de la ventana se ordenan y se asignan a sus perfiles en orden de perfil.
+     */
     private static List<Profile> withArrivals(ExperimentConfig config, List<Profile> profiles) {
         SplittableRandom random = config.rng("arrivals", 0);
-        double ratePerSecond = config.arrivals().arrivalsPerMinute() / 60.0;
-        Map<Integer, Double> clock = new HashMap<>();
+        ExperimentConfig.ArrivalParams a = config.arrivals();
+        double ratePerSecond = a.arrivalsPerMinute() / 60.0;
+        Map<Integer, List<Integer>> byWindow = new HashMap<>();
+        for (int i = 0; i < profiles.size(); i++) {
+            byWindow.computeIfAbsent(profiles.get(i).window(), k -> new ArrayList<>()).add(i);
+        }
+        double[] arrival = new double[profiles.size()];
+        for (Map.Entry<Integer, List<Integer>> entry : byWindow.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey()).toList()) {
+            double start = a.windowStartSeconds().get(entry.getKey() - 1);
+            List<Double> times = new ArrayList<>();
+            double clock = start;
+            for (int ignored : entry.getValue()) {
+                if (random.nextDouble() < a.rushShare()) {
+                    times.add(start + random.nextExponential() * a.rushMeanSeconds());
+                } else {
+                    clock += random.nextExponential() / ratePerSecond;
+                    times.add(clock);
+                }
+            }
+            Collections.sort(times);
+            for (int k = 0; k < times.size(); k++) {
+                arrival[entry.getValue().get(k)] = times.get(k);
+            }
+        }
         List<Profile> result = new ArrayList<>();
-        for (Profile p : profiles) {
-            double start = config.arrivals().windowStartSeconds().get(p.window() - 1);
-            double t = clock.getOrDefault(p.window(), start) + random.nextExponential() / ratePerSecond;
-            clock.put(p.window(), t);
-            result.add(p.withArrival(t));
+        for (int i = 0; i < profiles.size(); i++) {
+            result.add(profiles.get(i).withArrival(arrival[i]));
         }
         return result;
     }

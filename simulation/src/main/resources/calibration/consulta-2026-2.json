@@ -76,6 +76,21 @@
       { "id": "otra", "etiqueta": "otra", "porcentaje": 10.0 }
     ]
   },
+  "armado_horario": {
+    "tabla": "A10",
+    "uso": "referencia: fundamenta la mezcla de conciencia de cruces (behavior.plannerShare; cota 5-20 %). Solo se transcriben las categorías que usa el modelo; el resto de la tabla no se usa.",
+    "categorias": [
+      { "id": "papel", "etiqueta": "armó el horario antes en papel", "porcentaje": 11.1 },
+      { "id": "ensayo_error", "etiqueta": "ensayo y error en la plataforma", "porcentaje": 71.9 }
+    ]
+  },
+  "preparacion_previa": {
+    "tabla": "A12",
+    "uso": "referencia: 34,1 % no preparó nada antes de entrar; sostiene que la conciencia de cruces del ensayo y error es baja (cota <= 0,35)",
+    "categorias": [
+      { "id": "nada", "etiqueta": "no preparó nada", "porcentaje": 34.1 }
+    ]
+  },
   "supuestos": {
     "preferencia_de_jornada": "La consulta no la preguntó; es el parámetro population.preference de la configuración."
   }

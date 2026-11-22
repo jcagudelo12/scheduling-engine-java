@@ -14,13 +14,18 @@ import java.util.function.ToIntFunction;
  *       cruce obliga a rehacer la elección de esa asignatura).</li>
  *   <li><b>A11</b>, tiempo hasta confirmar = {@code t_total_s} en minutos; cae en la primera
  *       categoría cuyo límite superior lo cubre (&lt;15 excluyente; los demás incluyentes).</li>
- *   <li><b>A13</b>, perdió o casi perdió cupo mientras resolvía un cruce:
- *       <i>sí</i> = al menos un rechazo por cupo en una asignatura que tenía un rechazo por cruce
- *       pendiente ({@code r_cupo_in_clash} &gt; 0); <i>casi</i> = no perdió, pero tomó un cupo con
- *       un cruce pendiente en la asignatura cuando quedaban {@code nearLossSeats} cupos o menos
- *       ({@code near_loss} &gt; 0); <i>no</i> = ninguna de las dos. Como variante se informa
- *       A13b, donde <i>sí</i> es cualquier rechazo por cupo ({@code r_cupo} &gt; 0) aunque no
- *       hubiera cruce pendiente, y <i>casi</i> mantiene su definición.</li>
+ *   <li><b>A13</b>, perdió o casi perdió cupo mientras resolvía un cruce. La consulta no dice
+ *       cuándo empieza y termina "resolver un cruce"; se opera como el periodo entre el primer cruce
+ *       que encuentra el estudiante (rechazo de la plataforma o cruce que nota él) y la
+ *       confirmación. <i>sí</i> = en ese periodo tuvo al menos un rechazo por cupo o encontró lleno
+ *       un grupo que quería (se cruzaba) ({@code r_cupo_in_clash} &gt; 0); <i>casi</i> = no perdió,
+ *       pero tomó un cupo en ese periodo cuando quedaban {@code nearLossSeats} cupos o menos
+ *       ({@code near_loss} &gt; 0); <i>no</i> = ninguna de las dos (incluye a quien nunca tuvo un
+ *       cruce). Una definición más estricta (solo en la asignatura con el cruce pendiente o en una
+ *       retirada para resolverlo) se probó primero: no alcanzaba más de ~13 % de "sí" dentro de
+ *       cotas plausibles; ver docs/simulador.md. Como variante se informa A13b, donde <i>sí</i> es
+ *       cualquier rechazo por cupo ({@code r_cupo} &gt; 0) aunque sea antes de cualquier cruce, y
+ *       <i>casi</i> mantiene su definición.</li>
  * </ul>
  */
 public final class CalibrationReport {

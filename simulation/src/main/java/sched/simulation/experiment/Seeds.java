@@ -54,6 +54,40 @@ final class Seeds {
         return weights.length - 1;
     }
 
+    /** Gamma(forma, 1) por Marsaglia-Tsang (para forma < 1 se usa la elevación de forma + 1). */
+    static double gamma(RandomGenerator random, double shape) {
+        if (shape < 1) {
+            return gamma(random, shape + 1) * Math.pow(1 - random.nextDouble(), 1 / shape);
+        }
+        double d = shape - 1.0 / 3;
+        double c = 1 / Math.sqrt(9 * d);
+        while (true) {
+            double x = random.nextGaussian();
+            double v = 1 + c * x;
+            if (v <= 0) {
+                continue;
+            }
+            v = v * v * v;
+            double u = 1 - random.nextDouble();
+            if (Math.log(u) < 0.5 * x * x + d - d * v + d * Math.log(v)) {
+                return d * v;
+            }
+        }
+    }
+
+    /** Beta con la media y la concentración (a + b) dadas; una media en el borde da ese borde. */
+    static double beta(RandomGenerator random, double mean, double concentration) {
+        if (mean <= 0) {
+            return 0;
+        }
+        if (mean >= 1) {
+            return 1;
+        }
+        double x = gamma(random, mean * concentration);
+        double y = gamma(random, (1 - mean) * concentration);
+        return x / (x + y);
+    }
+
     static double[] toArray(List<Double> values) {
         return values.stream().mapToDouble(Double::doubleValue).toArray();
     }

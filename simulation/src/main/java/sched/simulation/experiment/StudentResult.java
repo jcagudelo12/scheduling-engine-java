@@ -11,9 +11,10 @@ package sched.simulation.experiment;
  * @param engineCalls consultas al motor (0 en A)
  * @param engineNanos cómputo real del motor, sumado al tiempo simulado
  * @param withdrawals retiros de grupos ya inscritos (retrocesos en A, cambios de alternativa en B)
- * @param rCupoInClash rechazos por cupo en una asignatura que ya tenía un rechazo por cruce pendiente
- * @param nearLoss cupos tomados, con un cruce pendiente en la asignatura, con muy pocos cupos
- *     restantes (ver {@code nearLossSeats})
+ * @param rCupoInClash cupos perdidos desde que el estudiante se topó con un cruce hasta confirmar:
+ *     rechazos por cupo y grupos que quería (se cruzaban) y vio llenos al volver
+ * @param nearLoss cupos tomados, después de toparse con un cruce, con muy pocos cupos restantes (ver
+ *     {@code nearLossSeats})
  */
 public record StudentResult(
         Profile profile,

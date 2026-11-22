@@ -31,7 +31,10 @@ public final class Experiment {
     }
 
     public static Setup prepare(ExperimentConfig config) {
-        Calibration calibration = Calibration.load(config.calibrationFile());
+        return prepare(config, Calibration.load(config.calibrationFile()));
+    }
+
+    public static Setup prepare(ExperimentConfig config, Calibration calibration) {
         List<String> programs = calibration.programs().stream().map(Calibration.Category::id).toList();
         ExperimentConfig.OfferParams params = config.offer();
 
@@ -58,6 +61,16 @@ public final class Experiment {
         SplittableRandom random = config.rng("offer", 0);
         OfferGenerator.curriculum(params, programs, random);
         return random;
+    }
+
+    /**
+     * Solo la condición A (no usa el motor): lo que necesita la calibración. No tiene estado
+     * compartido entre llamadas (cada una arma su plataforma y su cola), así que se puede llamar
+     * desde varios hilos a la vez.
+     */
+    public static List<StudentResult> runReactive(ExperimentConfig config, Calibration calibration) {
+        Setup setup = prepare(config, calibration);
+        return runCondition(config, setup.offer(), setup.profiles(), Condition.REACTIVE);
     }
 
     public static Result run(ExperimentConfig config) {
