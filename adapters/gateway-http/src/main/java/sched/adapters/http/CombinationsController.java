@@ -1,6 +1,8 @@
 package sched.adapters.http;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -11,10 +13,14 @@ import sched.application.AppException;
 import sched.application.Combinations;
 import sched.application.GenerateCombinations;
 import sched.application.PortException;
+import sched.application.ScoredSchedule;
 import sched.domain.CourseId;
+import sched.domain.Preferences;
 import sched.domain.Schedule;
 import sched.domain.StudentContext;
 import sched.domain.StudentId;
+import sched.domain.TimeSlot;
+import sched.domain.Weekday;
 
 /**
  * {@code POST /combinations}, con el contexto del estudiante en el cuerpo.
@@ -27,7 +33,8 @@ import sched.domain.StudentId;
 @RestController
 public class CombinationsController {
 
-    public record StudentContextDto(String studentId, List<String> eligibleCourses) {
+    /** {@code avoid} es opcional: ventanas que el estudiante prefiere evitar (restricción suave). */
+    public record StudentContextDto(String studentId, List<String> eligibleCourses, List<SlotDto> avoid) {
     }
 
     /** {@code maxCredits} es 0 cuando el periodo no tiene tope de créditos. */
@@ -39,13 +46,24 @@ public class CombinationsController {
     public record CreditLimitErrorDto(String error, int totalCredits, int maxCredits) {
     }
 
-    public record ScheduleDto(List<SectionDto> sections) {
+    public record ScheduleDto(long penalty, List<SectionDto> sections) {
     }
 
     public record SectionDto(String sectionId, String courseId, List<SlotDto> slots) {
     }
 
     public record SlotDto(String day, int startMinute, int endMinute) {
+    }
+
+    /** Cuerpo del 400 cuando una ventana de {@code avoid} no es válida. */
+    public record InvalidRequestDto(String error, String message) {
+    }
+
+    /** Solicitud con datos inválidos; se responde 400. */
+    static final class InvalidRequestException extends RuntimeException {
+        InvalidRequestException(String message) {
+            super(message);
+        }
     }
 
     private final GenerateCombinations generate;
@@ -58,7 +76,8 @@ public class CombinationsController {
     public CombinationsResponse combinations(@RequestBody StudentContextDto request) throws AppException {
         StudentContext student = new StudentContext(
                 new StudentId(request.studentId()),
-                request.eligibleCourses().stream().map(CourseId::new).toList());
+                request.eligibleCourses().stream().map(CourseId::new).toList(),
+                new Preferences(parseAvoid(request.avoid())));
         Combinations result = generate.execute(student);
         return new CombinationsResponse(
                 result.catalogSeq(),
@@ -66,6 +85,11 @@ public class CombinationsController {
                 result.totalCredits(),
                 result.maxCredits(),
                 result.schedules().stream().map(CombinationsController::toDto).toList());
+    }
+
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<InvalidRequestDto> handleInvalidRequest(InvalidRequestException error) {
+        return ResponseEntity.badRequest().body(new InvalidRequestDto("invalid_request", error.getMessage()));
     }
 
     /** Más específico que el manejador general: Spring elige este para el tope de créditos. */
@@ -88,8 +112,33 @@ public class CombinationsController {
         return ResponseEntity.status(status).body(error.getMessage());
     }
 
-    private static ScheduleDto toDto(Schedule schedule) {
-        return new ScheduleDto(schedule.sections().stream()
+    private static List<TimeSlot> parseAvoid(List<SlotDto> avoid) {
+        if (avoid == null) {
+            return List.of();
+        }
+        List<TimeSlot> windows = new ArrayList<>();
+        for (int i = 0; i < avoid.size(); i++) {
+            SlotDto window = avoid.get(i);
+            if (window == null || window.day() == null) {
+                throw new InvalidRequestException("avoid[" + i + "]: falta el día");
+            }
+            Weekday day;
+            try {
+                day = Weekday.valueOf(window.day().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                throw new InvalidRequestException(
+                        "avoid[" + i + "]: día inválido '" + window.day() + "' (monday ... sunday)");
+            }
+            windows.add(TimeSlot.of(day, window.startMinute(), window.endMinute())
+                    .orElseThrow(() -> new InvalidRequestException(
+                            "avoid[" + windows.size() + "]: se requiere 0 <= start_minute < end_minute <= 1440")));
+        }
+        return windows;
+    }
+
+    private static ScheduleDto toDto(ScoredSchedule scored) {
+        Schedule schedule = scored.schedule();
+        return new ScheduleDto(scored.penalty(), schedule.sections().stream()
                 .map(s -> new SectionDto(
                         s.id().value(),
                         s.course().value(),

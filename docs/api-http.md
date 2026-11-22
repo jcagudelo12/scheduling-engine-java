@@ -7,7 +7,7 @@ despliegue con Docker se llega a ella a través de Traefik, en `localhost:8080`.
 > **Provisional.** Hoy el contexto del estudiante llega en el cuerpo de la solicitud, sin firmar.
 > Antes de exponer el motor a navegadores reales debe reemplazarse por un token firmado por la
 > institución ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)). Además, la
-> forma de la solicitud cambiará cuando se agreguen los filtros del estudiante y las 5 mejores
+> forma de la solicitud cambiará cuando se agreguen más filtros del estudiante y las 5 mejores
 > combinaciones ([ADR 0006](adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md)).
 
 Todos los nombres JSON van en `snake_case`.
@@ -25,7 +25,8 @@ Content-Type: application/json
 
 {
   "student_id": "est-001",
-  "eligible_courses": ["MAT101", "FIS101"]
+  "eligible_courses": ["MAT101", "FIS101"],
+  "avoid": [{ "day": "monday", "start_minute": 360, "end_minute": 480 }]
 }
 ```
 
@@ -33,6 +34,10 @@ Content-Type: application/json
 |---|---|---|---|
 | `student_id` | string | sí | Identificador del estudiante en la institución |
 | `eligible_courses` | string[] | sí | Cursos que puede matricular. Los repetidos se ignoran |
+| `avoid` | objeto[] | no | Ventanas que el estudiante prefiere evitar. Mismo formato que `slots` de la respuesta: `day` (`monday` … `sunday`, sin distinguir mayúsculas), `start_minute` y `end_minute` (`[inicio, fin)`, con `0 <= start_minute < end_minute <= 1440`). Ausente o vacío = sin preferencias |
+
+`avoid` es una **restricción suave**: nunca descarta combinaciones, solo las ordena (ver
+[Orden y penalización](#orden-y-penalización)).
 
 ### Respuesta `200`
 
@@ -44,6 +49,7 @@ Content-Type: application/json
   "max_credits": 18,
   "schedules": [
     {
+      "penalty": 0,
       "sections": [
         {
           "section_id": "MAT101-01",
@@ -71,6 +77,7 @@ Content-Type: application/json
 | `total_credits` | Suma de créditos de los cursos pedidos (sin contar repetidos). Un curso sin créditos informados por la institución cuenta 0 |
 | `max_credits` | Tope de créditos del periodo. `0` significa que no hay tope |
 | `schedules` | Combinaciones compatibles; como máximo `SCHED_MAX_COMBINATIONS` (por defecto 200) |
+| `schedules[].penalty` | Penalización de la combinación según `avoid`: número de franjas elegidas que caen en las ventanas a evitar. `0` si no hay `avoid` o no se incumple |
 | `schedules[].sections` | Un grupo por cada curso pedido |
 | `section_id`, `course_id` | Identificadores del grupo y del curso, tal como los envía la institución |
 | `slots[].day` | `monday` … `sunday` |
@@ -88,15 +95,28 @@ Reglas del cálculo:
   0, deja de aparecer en la siguiente respuesta.
 - Si algún curso pedido **no tiene grupos con cupo** o no existe en el catálogo, no hay
   combinación completa posible y `schedules` llega vacío, con código `200`.
-- Las combinaciones salen en el orden en que las encuentra la búsqueda, **no ordenadas por
-  calidad**. El orden por criterios del estudiante es parte del
-  [ADR 0006](adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md), todavía pendiente.
+- Las combinaciones salen **de menor a mayor `penalty`**, con empate por ids de grupo. Ver
+  [Orden y penalización](#orden-y-penalización).
+
+### Orden y penalización
+
+Las preferencias son restricciones suaves. Si E es el conjunto de ventanas de `avoid`, la
+penalización de una combinación es p = Σ |franjas del grupo ∩ E|, sumada sobre sus grupos: cuenta
+las franjas elegidas que caen en E. Una franja del grupo "cae" en E si se solapa con alguna
+ventana de `avoid` (intervalos `[inicio, fin)`): una clase que termina justo cuando empieza la
+ventana no cuenta, un solape parcial sí, y cada franja cuenta una sola vez aunque toque varias
+ventanas.
+
+Con `avoid` se devuelven las `SCHED_MAX_COMBINATIONS` combinaciones de **menor penalización de
+todas las posibles** (búsqueda exacta), no las primeras encontradas. Sin `avoid` todas tienen
+`penalty` 0 y el orden es el de ids de grupo.
 
 ### Errores
 
 | Código | Cuándo | Cuerpo |
 |---|---|---|
 | `400` | El cuerpo no es JSON válido | JSON de error de Spring |
+| `400` | Una ventana de `avoid` es inválida (día desconocido o ausente, `end_minute` no mayor que `start_minute`, fuera de `0..1440`) | `{ "error": "invalid_request", "message": "avoid[0]: ..." }` |
 | `422` | Los créditos de los cursos pedidos superan el tope del periodo. No se buscó | `{ "error": "credit_limit_exceeded", "total_credits": 21, "max_credits": 18 }` |
 | `503` | El motor aún no recibió ninguna carga completa del catálogo | `el catálogo aún no se ha cargado` (texto) |
 | `503` | Un puerto de salida no está disponible | Mensaje del error (texto) |

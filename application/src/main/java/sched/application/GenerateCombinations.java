@@ -2,9 +2,11 @@ package sched.application;
 
 import java.util.List;
 import sched.domain.EnrollmentRules;
+import sched.domain.Preferences;
 import sched.domain.Section;
 import sched.domain.StudentContext;
 import sched.solver.Problem;
+import sched.solver.SectionCost;
 import sched.solver.Solver;
 
 /**
@@ -14,6 +16,9 @@ import sched.solver.Solver;
  * créditos del periodo: depende de los cursos y no de los grupos, así que si la suma lo supera
  * no se hace la búsqueda y se lanza {@link AppException.CreditLimitExceeded}. Un curso sin
  * créditos informados cuenta 0, y sin tope ({@code max_credits = 0}) no se verifica nada.
+ *
+ * <p>Las preferencias del estudiante no descartan combinaciones: las ordenan por penalización
+ * (ver {@link Preferences}) y se devuelven las {@code maxResults} de menor penalización.
  */
 public final class GenerateCombinations {
 
@@ -47,8 +52,15 @@ public final class GenerateCombinations {
             throw new AppException.CreditLimitExceeded(snapshot.totalCredits(), snapshot.maxCredits());
         }
 
-        Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxResults);
+        // Las preferencias son restricciones suaves: solo ordenan. Sin ellas el costo es cero y el
+        // solver corta en cuanto reúne maxResults; con ellas devuelve las de menor penalización.
+        Preferences preferences = student.preferences();
+        SectionCost cost = preferences.isEmpty() ? SectionCost.ZERO : preferences::penaltyOf;
+        Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxResults, cost);
+        List<ScoredSchedule> schedules = solver.solveScored(problem).stream()
+                .map(scored -> new ScoredSchedule(scored.schedule(), scored.cost()))
+                .toList();
         return new Combinations(snapshot.seq(), snapshot.stale(), snapshot.totalCredits(), snapshot.maxCredits(),
-                solver.solve(problem));
+                schedules);
     }
 }

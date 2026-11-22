@@ -11,6 +11,8 @@ Términos del proyecto. Entre paréntesis, el nombre que se usa en el código cu
 | **Cupo** (`capacity`, `available_seats`) | `capacity` es el cupo total; `available_seats` es lo que queda libre. Un grupo sin cupo libre no se ofrece |
 | **Créditos** (`credits`) | Valor de una asignatura, igual para todos sus grupos. Lo informa la institución en la carga completa; un curso sin créditos informados cuenta 0 |
 | **Tope de créditos** (`max_credits`, `EnrollmentRules`) | Máximo de créditos que un estudiante puede matricular en el periodo, parametrizado por la institución. 0 = sin tope. Se verifica antes de la búsqueda; si se supera, la API responde `422` |
+| **Restricción suave** (`Preferences`, `avoid`) | Preferencia del estudiante que no descarta combinaciones, solo las ordena. Hoy: ventanas de horario a evitar |
+| **Penalización** (`penalty`) | Costo de una combinación según las preferencias: número de franjas elegidas que se solapan con alguna ventana a evitar. Se devuelve la combinación de menor penalización primero |
 | **Cruce** (`overlaps`) | Dos franjas del mismo día que se superponen. Una combinación válida no tiene cruces |
 | **Combinación** (`Schedule`) | Un grupo por cada curso pedido, sin cruces entre ellos |
 | **Contexto del estudiante** (`StudentContext`) | Lo que el motor sabe del estudiante en una solicitud: su identificador y sus cursos habilitados. Llegará en un token firmado ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) |

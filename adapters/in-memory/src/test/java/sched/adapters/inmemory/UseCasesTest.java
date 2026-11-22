@@ -24,6 +24,7 @@ import sched.domain.CatalogEvent;
 import sched.domain.Course;
 import sched.domain.CourseId;
 import sched.domain.EnrollmentRules;
+import sched.domain.Preferences;
 import sched.domain.Section;
 import sched.domain.SectionId;
 import sched.domain.SectionSeats;
@@ -137,7 +138,7 @@ class UseCasesTest {
 
         Combinations result = generate.execute(repeated);
         assertEquals(2, result.schedules().size());
-        assertTrue(result.schedules().stream().allMatch(s -> s.sections().size() == 2));
+        assertTrue(result.schedules().stream().allMatch(s -> s.schedule().sections().size() == 2));
     }
 
     private static final List<Course> CREDITS =
@@ -197,5 +198,57 @@ class UseCasesTest {
         // Cambiar el máximo solo requiere una nueva carga, sin tocar el motor.
         load.execute(101, catalog(), CREDITS, new EnrollmentRules(20));
         assertEquals(2, generate.execute(STUDENT).schedules().size());
+    }
+
+    private static StudentContext avoiding(Weekday day) {
+        return new StudentContext(new StudentId("s1"), List.of(new CourseId("MAT"), new CourseId("FIS")),
+                new Preferences(List.of(TimeSlot.of(day, 480, 500).orElseThrow())));
+    }
+
+    @Test
+    void withoutPreferencesEveryCombinationHasPenaltyZero() throws Exception {
+        load.execute(100, catalog());
+
+        assertTrue(generate.execute(STUDENT).schedules().stream().allMatch(s -> s.penalty() == 0));
+    }
+
+    @Test
+    void preferencesOrderByPenaltyWithoutDiscarding() throws Exception {
+        load.execute(100, catalog());
+
+        Combinations result = generate.execute(avoiding(Weekday.MONDAY));
+        assertEquals(2, result.schedules().size());
+        // MAT-02 (miércoles) no toca el lunes; MAT-01 sí aunque su id sea menor.
+        assertEquals("MAT-02", result.schedules().get(0).schedule().sections().getFirst().id().value());
+        assertEquals(0, result.schedules().get(0).penalty());
+        assertEquals("MAT-01", result.schedules().get(1).schedule().sections().getFirst().id().value());
+        assertEquals(1, result.schedules().get(1).penalty());
+    }
+
+    @Test
+    void topKIsExactEvenWhenTheBestComesLastById() throws Exception {
+        CatalogReplicaHolder only = new CatalogReplicaHolder();
+        GenerateCombinations top1 = new GenerateCombinations(new BacktrackingSolver(), only.replica(), 1);
+        // Mismo catálogo en una réplica propia, con corte en 1 resultado.
+        only.load(catalog());
+
+        Combinations result = top1.execute(avoiding(Weekday.MONDAY));
+        assertEquals(1, result.schedules().size());
+        assertEquals("MAT-02", result.schedules().getFirst().schedule().sections().getFirst().id().value());
+        assertEquals(0, result.schedules().getFirst().penalty());
+    }
+
+    /** Réplica independiente de la del escenario, para usar otro {@code maxResults}. */
+    private static final class CatalogReplicaHolder {
+        private final CatalogReplica replica = new CatalogReplica();
+
+        CatalogReplica replica() {
+            return replica;
+        }
+
+        void load(List<SectionSeats> sections) throws Exception {
+            new ApplyLogEntry(replica).execute(new CatalogLogEntry.Snapshot(
+                    1, sections, List.of(), EnrollmentRules.NONE));
+        }
     }
 }
