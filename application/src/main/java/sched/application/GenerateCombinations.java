@@ -42,15 +42,13 @@ public final class GenerateCombinations {
             int total = catalog.totalCredits(student.eligibleCourses());
             EnrollmentRules rules = catalog.rules();
             // Si se excede el tope no se leen los grupos: la búsqueda no se va a hacer.
-            List<Section> candidates = rules.exceedsCreditLimit(total)
+            List<Section> candidates = CreditCheck.exceeds(total, rules.maxCredits())
                     ? List.of()
                     : catalog.openSectionsOf(student.eligibleCourses());
             return new Snapshot(catalog.seq(), stale, total, rules.maxCredits(), candidates);
         });
 
-        if (new EnrollmentRules(snapshot.maxCredits()).exceedsCreditLimit(snapshot.totalCredits())) {
-            throw new AppException.CreditLimitExceeded(snapshot.totalCredits(), snapshot.maxCredits());
-        }
+        CreditCheck.verify(snapshot.totalCredits(), snapshot.maxCredits());
 
         // Las preferencias son restricciones suaves: solo ordenan. Sin ellas el costo es cero y el
         // solver corta en cuanto reúne maxResults; con ellas devuelve las de menor penalización.

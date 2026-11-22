@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.TreeSet;
@@ -88,6 +89,12 @@ public final class Catalog {
     public OptionalInt available(SectionId section) {
         Entry entry = entries.get(section);
         return entry == null ? OptionalInt.empty() : OptionalInt.of(entry.available());
+    }
+
+    /** El grupo con ese id, tenga o no cupo; vacío si no está en el catálogo. */
+    public Optional<Section> sectionOf(SectionId id) {
+        Entry entry = entries.get(id);
+        return entry == null ? Optional.empty() : Optional.of(entry.section());
     }
 
     /**

@@ -54,6 +54,13 @@ public abstract sealed class AppException extends Exception {
         }
     }
 
+    /** La selección actual del estudiante no es coherente con sus cursos o con el catálogo. */
+    public static final class InvalidSelection extends AppException {
+        public InvalidSelection(String message) {
+            super(message, null);
+        }
+    }
+
     /** Falló un adaptador. */
     public static final class PortFailure extends AppException {
         private final PortException.Kind kind;
