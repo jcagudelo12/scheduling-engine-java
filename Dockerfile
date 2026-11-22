@@ -36,5 +36,10 @@ USER sched
 EXPOSE 8080 8081 50051
 HEALTHCHECK --interval=5s --timeout=2s --retries=3 CMD curl -fsS http://localhost:8080/ready || exit 1
 # La JVM usa hasta el 75 % de la memoria asignada al contenedor.
+# Recolector Serial, explícito: una réplica de ~2 núcleos y heap pequeño pierde con G1 (hilos concurrentes, barreras y
+# recolecciones mixtas): -12 % de CPU por solicitud y p99 en estado estable de ~6 ms contra ~18 ms a 4.000/s
+# (bench/results/profile-server.md, "Por qué se desborda la latencia con token"). Con menos de 2 núcleos o menos de
+# 1.792 MB la JVM ya lo elegiría sola; así no depende de los límites del contenedor. Un recolector distinto (-XX:+UseG1GC...) en
+# JAVA_TOOL_OPTIONS choca con este y la JVM no arranca: para cambiarlo, redefina el ENTRYPOINT.
 # Netty (gRPC) carga librerías nativas; Java 22+ pide declararlo para no advertir.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/sched-server.jar"]
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-XX:MaxRAMPercentage=75", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/sched-server.jar"]

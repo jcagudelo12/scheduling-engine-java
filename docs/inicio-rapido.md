@@ -292,6 +292,13 @@ El motor se configura con variables de entorno (ver
 | `SCHED_SEARCH_TIMEOUT_MS` | `150` | Tiempo máximo de cada búsqueda en milisegundos; `0` lo desactiva. Al vencer, la respuesta trae `"complete": false` ([ADR 0009](adr/0009-tiempo-maximo-de-la-busqueda.md)) |
 | `SCHED_SOLVER` | `forward-checking` | Algoritmo de búsqueda: `forward-checking` o `backtracking` (línea base) |
 
+### JVM y dimensionamiento
+
+La imagen arranca la JVM con el recolector Serial (`-XX:+UseSerialGC`) y hasta el 75 % de la memoria del contenedor: con una réplica de ~2 núcleos y un heap
+pequeño gasta menos CPU por solicitud y tiene menos cola de latencia que G1 (ver [`bench/results/profile-server.md`](../bench/results/profile-server.md)). Para otro
+recolector hay que redefinir el `ENTRYPOINT`: un `-XX:+UseG1GC` en `JAVA_TOOL_OPTIONS` choca con este y la JVM no arranca. Con token, una réplica de 2 núcleos ya
+caliente sostiene 4.000-4.500 solicitudes/s con p99 de ~20 ms; **recién arrancada** (JVM fría) y con el pico encima, ~2.500/s: ponga las réplicas en servicio antes de que abra la matrícula.
+
 El simulador usa `SCHED_INGEST_URL` (por defecto `localhost:50051`) para saber dónde está la
 ingesta. Como la ingesta exige mTLS, también necesita el certificado de cliente: `--tls-cert`,
 `--tls-key` y `--tls-ca` (o `SCHED_INGEST_TLS_CERT`, `SCHED_INGEST_TLS_KEY` y `SCHED_INGEST_TLS_CA`),
