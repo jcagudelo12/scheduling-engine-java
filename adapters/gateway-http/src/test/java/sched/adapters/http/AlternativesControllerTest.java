@@ -53,7 +53,44 @@ class AlternativesControllerTest {
     }
 
     private static AlternativesController.AlternativesRequestDto request(Map<String, String> selection) {
-        return new AlternativesController.AlternativesRequestDto("s1", List.of("MAT", "FIS"), null, selection);
+        return request(selection, null);
+    }
+
+    private static AlternativesController.AlternativesRequestDto request(
+            Map<String, String> selection, List<String> enrolled) {
+        return new AlternativesController.AlternativesRequestDto("s1", List.of("MAT", "FIS"), null, selection, enrolled);
+    }
+
+    @Test
+    void enrolledGroupWithoutSeatsIsKeptAsAvailable() throws Exception {
+        load(0); // MAT-01 tiene 0 cupos: el último lo tomó el propio estudiante
+
+        var response = controller.alternatives(
+                request(Map.of("MAT", "MAT-01", "FIS", "FIS-01"), List.of("MAT-01")));
+
+        assertTrue(response.selectionValid());
+        assertTrue(response.conflicts().withoutSeats().isEmpty());
+        assertEquals(0, response.alternatives().getFirst().distance());
+        assertEquals(List.of("MAT-01", "FIS-01"),
+                response.alternatives().getFirst().sections().stream().map(s -> s.sectionId()).toList());
+    }
+
+    @Test
+    void enrolledGroupOutsideTheSelectionAnswers400() throws Exception {
+        load(0);
+
+        AppException.InvalidSelection error = assertThrows(AppException.InvalidSelection.class,
+                () -> controller.alternatives(request(Map.of("FIS", "FIS-01"), List.of("MAT-01"))));
+        assertEquals(HttpStatus.BAD_REQUEST, controller.handleInvalidSelection(error).getStatusCode());
+    }
+
+    @Test
+    void blankEnrolledGroupAnswers400() throws Exception {
+        load(0);
+
+        var error = assertThrows(CombinationsController.InvalidRequestException.class,
+                () -> controller.alternatives(request(Map.of("MAT", "MAT-01"), List.of(" "))));
+        assertEquals(HttpStatus.BAD_REQUEST, controller.handleInvalidRequest(error).getStatusCode());
     }
 
     @Test

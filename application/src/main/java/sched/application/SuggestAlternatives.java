@@ -8,6 +8,7 @@ import static sched.application.Alternatives.Conflicts;
 import static sched.application.Alternatives.Reason;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -52,6 +53,10 @@ import sched.solver.Solver;
  * grupo con cupo de la selección; {@code REARRANGED} si era válido y cambia para acomodar otros.
  * Los cruces con un grupo sin cupo no se reportan: ese grupo se va a cambiar de todos modos.
  *
+ * <p><b>Grupos ya inscritos.</b> El estudiante puede indicar cuáles de sus elecciones ya tiene
+ * inscritas ({@code enrolled}); esos grupos cuentan como con cupo aunque la réplica marque 0,
+ * porque el cupo que falta es el suyo.
+ *
  * <p>Verifica el tope de créditos igual que {@link GenerateCombinations}. Devuelve a lo sumo
  * {@code maxAlternatives} alternativas (parámetro propio, {@code SCHED_MAX_ALTERNATIVES}).
  */
@@ -80,7 +85,25 @@ public final class SuggestAlternatives {
         this.maxAlternatives = maxAlternatives;
     }
 
+    /** Sin grupos ya inscritos: todo grupo de la selección sin cupo en la réplica es {@code NO_SEATS}. */
     public Alternatives execute(StudentContext student, Map<CourseId, SectionId> selection) throws AppException {
+        return execute(student, selection, Set.of());
+    }
+
+    /**
+     * @param enrolled grupos de la selección que el estudiante ya tiene inscritos. Ya tienen su
+     *     cupo, así que cuentan como disponibles aunque la réplica marque 0 (quizá el último cupo
+     *     lo tomó él): se agregan a los candidatos y no generan {@code NO_SEATS}. Cada uno debe
+     *     estar en {@code selection}, o es {@link AppException.InvalidSelection}.
+     */
+    public Alternatives execute(StudentContext student, Map<CourseId, SectionId> selection, Set<SectionId> enrolled)
+            throws AppException {
+        for (SectionId id : enrolled) {
+            if (!selection.containsValue(id)) {
+                throw new AppException.InvalidSelection(
+                        "el grupo inscrito " + id + " no está en la selección");
+            }
+        }
         Set<CourseId> eligible = new HashSet<>(student.eligibleCourses());
         for (CourseId course : selection.keySet()) {
             if (!eligible.contains(course)) {
@@ -93,17 +116,30 @@ public final class SuggestAlternatives {
             int total = catalog.totalCredits(student.eligibleCourses());
             EnrollmentRules rules = catalog.rules();
             boolean exceeds = CreditCheck.exceeds(total, rules.maxCredits());
-            List<Section> candidates = exceeds ? List.of() : catalog.openSectionsOf(student.eligibleCourses());
+            List<Section> candidates = new ArrayList<>(
+                    exceeds ? List.of() : catalog.openSectionsOf(student.eligibleCourses()));
+            boolean ownAdded = false;
             Map<CourseId, Selected> selected = new LinkedHashMap<>();
             if (!exceeds) {
                 for (CourseId course : student.eligibleCourses()) {
                     SectionId id = selection.get(course);
                     if (id != null) {
                         Section section = catalog.sectionOf(id).orElse(null);
-                        boolean seats = catalog.available(id).orElse(0) > 0;
+                        boolean own = section != null && section.course().equals(course) && enrolled.contains(id);
+                        boolean seats = own || catalog.available(id).orElse(0) > 0;
+                        if (own && candidates.stream().noneMatch(c -> c.id().equals(id))) {
+                            candidates.add(section);
+                            ownAdded = true;
+                        }
                         selected.put(course, new Selected(course, id, section, seats));
                     }
                 }
+            }
+            if (ownAdded) {
+                // Mismo orden que openSectionsOf: por curso (como se pidieron) y luego por id.
+                List<CourseId> order = student.eligibleCourses();
+                candidates.sort(Comparator.<Section>comparingInt(c -> order.indexOf(c.course()))
+                        .thenComparing(Section::id));
             }
             return new Snapshot(catalog.seq(), stale, total, rules.maxCredits(), candidates, selected);
         });

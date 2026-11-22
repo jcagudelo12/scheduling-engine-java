@@ -169,7 +169,8 @@ Content-Type: application/json
   "student_id": "est-001",
   "eligible_courses": ["MAT101", "FIS101"],
   "avoid": [{ "day": "monday", "start_minute": 360, "end_minute": 480 }],
-  "selection": { "MAT101": "MAT101-01", "FIS101": "FIS101-02" }
+  "selection": { "MAT101": "MAT101-01", "FIS101": "FIS101-02" },
+  "enrolled": ["MAT101-01"]
 }
 ```
 
@@ -178,10 +179,11 @@ Los campos son los de [`/combinations`](#solicitud) más:
 | Campo | Tipo | Obligatorio | Descripción |
 |---|---|---|---|
 | `selection` | objeto | no | Selección actual: `{ "<curso>": "<grupo>" }`. Puede no cubrir todos los cursos. Ausente = sin elecciones |
+| `enrolled` | lista de grupos | no | Grupos de la `selection` que el estudiante **ya tiene inscritos**. Cuentan como con cupo aunque la réplica marque 0 (quizá el último cupo lo tomó él), no generan `no_seats` y pueden conservarse con `distance` 0. Cada uno debe estar en `selection`, o es un `400`. Ausente = ninguno |
 
 Un curso **sin elección** se elige libremente: aporta distancia 0 con cualquier grupo y aparece
 en `changes` con razón `not_selected`. Una elección para un curso que no está en
-`eligible_courses`, o un grupo que pertenece a otro curso, es un `400`. Un grupo elegido que no
+`eligible_courses`, o un grupo que pertenece a otro curso, es un `400` (también un `enrolled` que no está en `selection`). Un grupo elegido que no
 existe en el catálogo cuenta como sin cupo.
 
 ### Respuesta `200`

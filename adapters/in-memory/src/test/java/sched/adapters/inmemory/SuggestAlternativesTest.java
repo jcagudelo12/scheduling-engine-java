@@ -259,4 +259,58 @@ class SuggestAlternativesTest {
         assertThrows(AppException.InvalidSelection.class,
                 () -> suggest.execute(student(Preferences.NONE, MAT, FIS), selection("FIS-01", "FIS-01")));
     }
+
+    @Test
+    void enrolledGroupWithoutSeatsIsKeptWithDistanceZero() throws Exception {
+        // El estudiante tomó el último cupo de MAT-01: la réplica ya lo ve en 0.
+        load.execute(1, List.of(
+                group("MAT-01", MAT, Weekday.MONDAY, 0),
+                group("MAT-02", MAT, Weekday.WEDNESDAY, 5),
+                group("FIS-01", FIS, Weekday.TUESDAY, 5)));
+
+        Alternatives withoutIt = suggest.execute(student(Preferences.NONE, MAT, FIS), selection("MAT-01", "FIS-01"));
+        assertFalse(withoutIt.selectionValid());
+
+        Alternatives result = suggest.execute(student(Preferences.NONE, MAT, FIS), selection("MAT-01", "FIS-01"),
+                java.util.Set.of(new SectionId("MAT-01")));
+
+        assertTrue(result.selectionValid());
+        assertTrue(result.conflicts().withoutSeats().isEmpty());
+        assertEquals(0, result.alternatives().getFirst().distance());
+        assertEquals(List.of("MAT-01", "FIS-01"), ids(result.alternatives().getFirst()));
+    }
+
+    @Test
+    void enrolledGroupStillClashesWithOthersAndOnlyTheOtherChanges() throws Exception {
+        // MAT-01 (propio, sin cupo) y FIS-01 chocan el lunes; FIS-02 no.
+        load.execute(1, List.of(
+                group("MAT-01", MAT, Weekday.MONDAY, 0),
+                group("FIS-01", FIS, Weekday.MONDAY, 5),
+                group("FIS-02", FIS, Weekday.TUESDAY, 5)));
+
+        Alternatives result = suggest.execute(student(Preferences.NONE, MAT, FIS), selection("MAT-01", "FIS-01"),
+                java.util.Set.of(new SectionId("MAT-01")));
+
+        assertFalse(result.selectionValid());
+        assertEquals(List.of("MAT-01", "FIS-02"), ids(result.alternatives().getFirst()));
+        assertEquals(1, result.alternatives().getFirst().distance());
+    }
+
+    @Test
+    void enrolledGroupMustBeInTheSelection() throws Exception {
+        load.execute(1, List.of(group("MAT-01", MAT, Weekday.MONDAY, 0), group("FIS-01", FIS, Weekday.TUESDAY, 5)));
+
+        assertThrows(AppException.InvalidSelection.class, () -> suggest.execute(
+                student(Preferences.NONE, MAT, FIS), Map.of(FIS, new SectionId("FIS-01")),
+                java.util.Set.of(new SectionId("MAT-01"))));
+    }
+
+    @Test
+    void enrolledGroupOfAnotherCourseIsRefused() throws Exception {
+        load.execute(1, List.of(group("MAT-01", MAT, Weekday.MONDAY, 5), group("FIS-01", FIS, Weekday.TUESDAY, 5)));
+
+        assertThrows(AppException.InvalidSelection.class, () -> suggest.execute(
+                student(Preferences.NONE, MAT, FIS), selection("FIS-01", "FIS-01"),
+                java.util.Set.of(new SectionId("FIS-01"))));
+    }
 }

@@ -1,8 +1,10 @@
 package sched.adapters.http;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,13 +36,16 @@ public class AlternativesController {
 
     /**
      * Contexto del estudiante y selección actual: objeto {@code curso -> grupo}. Es opcional (nulo
-     * equivale a sin elecciones) y puede no cubrir todos los cursos pedidos.
+     * equivale a sin elecciones) y puede no cubrir todos los cursos pedidos. {@code enrolled}
+     * (opcional): grupos de la selección que el estudiante ya tiene inscritos; cuentan como con
+     * cupo aunque la réplica marque 0.
      */
     public record AlternativesRequestDto(
             String studentId,
             List<String> eligibleCourses,
             List<SlotDto> avoid,
-            Map<String, String> selection) {
+            Map<String, String> selection,
+            List<String> enrolled) {
     }
 
     public record AlternativesResponse(
@@ -85,7 +90,8 @@ public class AlternativesController {
                 new StudentId(request.studentId()),
                 request.eligibleCourses().stream().map(CourseId::new).toList(),
                 new Preferences(CombinationsController.parseAvoid(request.avoid())));
-        Alternatives result = suggest.execute(student, parseSelection(request.selection()));
+        Alternatives result = suggest.execute(
+                student, parseSelection(request.selection()), parseEnrolled(request.enrolled()));
         return new AlternativesResponse(
                 result.catalogSeq(),
                 result.stale(),
@@ -132,6 +138,20 @@ public class AlternativesController {
             }
             parsed.put(new CourseId(course), new SectionId(section));
         });
+        return parsed;
+    }
+
+    private static Set<SectionId> parseEnrolled(List<String> enrolled) {
+        Set<SectionId> parsed = new HashSet<>();
+        if (enrolled == null) {
+            return parsed;
+        }
+        for (String section : enrolled) {
+            if (section == null || section.isBlank()) {
+                throw new InvalidRequestException("enrolled: grupo vacío");
+            }
+            parsed.add(new SectionId(section));
+        }
         return parsed;
     }
 
