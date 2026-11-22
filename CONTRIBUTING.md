@@ -27,8 +27,13 @@ adapters/*, server  →  application  →  solver  →  domain
   negocio.
 - `server` es el único que conoce a todos y los conecta según `SCHED_ROLE`.
 
-Maven lo hace cumplir: si un módulo no declara la dependencia, no compila. Si sientes que
-necesitas importar algo "hacia afuera", probablemente falta un puerto en `application`.
+Maven lo hace cumplir: si un módulo no declara la dependencia, no compila. Y las reglas de
+ArchUnit de [`quality`](quality/src/test/java/sched/architecture/ArchitectureTest.java) lo
+vigilan en cada `verify` aunque el código compile: `domain` solo depende de `java.*`, `solver`
+solo de `domain`, `application` no conoce adaptadores, Spring, gRPC, NATS, Jackson ni Micrometer,
+los adaptadores no dependen entre sí, nada depende de `server` ni de `simulation`, y no hay ciclos
+entre paquetes de primer nivel. Si sientes que necesitas importar algo "hacia afuera",
+probablemente falta un puerto en `application` (así se midió el motor: puerto `EngineMetrics`).
 
 [docs/arquitectura.md](docs/arquitectura.md#dónde-agregar-cosas) indica dónde va cada tipo de
 cambio.
@@ -39,7 +44,8 @@ cambio.
 ./mvnw verify                                   # todo: compila y corre todas las pruebas
 ./mvnw -q -pl solver -am test                   # pruebas de un módulo (y lo que necesita)
 ./mvnw -q -pl solver -am test -Dtest=BacktrackingSolverTest -Dsurefire.failIfNoSpecifiedTests=false
-./mvnw -q -pl server -am package -DskipTests    # solo el jar del motor
+./mvnw -q -pl server -am package -DskipTests    # solo el jar del motor (server/target/sched-server-exec.jar)
+./mvnw -q -pl quality -am verify                # reglas de arquitectura y reporte agregado de cobertura
 ./mvnw -q -pl simulation -am package -DskipTests
 java -jar simulation/target/sched-simulation.jar simulate   # probar un cambio del solver sin red
 ```
@@ -60,9 +66,42 @@ Para medir rendimiento: microbenchmarks con `bench/micro.sh` y prueba de carga c
 | `adapters/in-memory/src/test` | Casos de uso de punta a punta con el historial en memoria | [`UseCasesTest`](adapters/in-memory/src/test/java/sched/adapters/inmemory/UseCasesTest.java) |
 | `proto/src/test` | Conversión entre protobuf y dominio | [`ConvertTest`](proto/src/test/java/sched/proto/ConvertTest.java) |
 | `simulation/src/test` | Escenarios completos | [`SimulationTest`](simulation/src/test/java/sched/simulation/SimulationTest.java) |
+| `quality/src/test` | Reglas de arquitectura (ArchUnit) sobre todos los módulos | [`ArchitectureTest`](quality/src/test/java/sched/architecture/ArchitectureTest.java) |
+| `adapters/nats-bus/src/test` | El historial contra un NATS JetStream real (Testcontainers) | [`JetStreamIntegrationTest`](adapters/nats-bus/src/test/java/sched/adapters/nats/JetStreamIntegrationTest.java) |
+| `server/src/test` | El motor completo con Spring Boot, NATS real, mTLS y token; métricas y logs | [`EngineEndToEndTest`](server/src/test/java/sched/server/EngineEndToEndTest.java) |
 
 - Todo cambio de comportamiento lleva su prueba en el módulo más interno posible.
-- Las pruebas usan JUnit 5 y no necesitan NATS ni Docker.
+- Las pruebas usan JUnit 5. Solo las de integración (`JetStreamIntegrationTest` y
+  `EngineEndToEndTest`) necesitan **Docker**, para levantar `nats:2` con Testcontainers; sin Docker
+  se saltan limpiamente (`@Testcontainers(disabledWithoutDocker = true)`) y el resto pasa. Con
+  Docker disponible, `./mvnw verify` las corre; en la CI siempre corren. La imagen `nats:2` se
+  descarga la primera vez.
+- Si una prueba nueva tarda más de unos 30 s, no la dejes en `verify`: muévela a un perfil Maven
+  `integration`. Hoy no hace falta: la más lenta tarda unos 10 s.
+- Un `@Testcontainers` en una clase nueva debe llevar `disabledWithoutDocker = true`.
+- Las pruebas de logs capturan el log (Logback) y comprueban que no se filtran tokens, cuerpos ni
+  ids de estudiante ([política](docs/arquitectura.md#observabilidad)). Un log nuevo no debe incluir
+  datos de la solicitud.
+
+### Cobertura
+
+`verify` mide la cobertura con JaCoCo en cada módulo (`target/site/jacoco/index.html`) y produce un
+reporte agregado en `quality/target/site/jacoco-aggregate/index.html` (la CI lo publica como artefacto
+`jacoco`). El código generado de protobuf no cuenta.
+
+`domain`, `solver` y `application` (el núcleo) tienen un **umbral mínimo** que hace fallar `verify`
+si la cobertura baja. Se fija en el `pom.xml` de cada módulo (`jacoco.line.min`, `jacoco.branch.min`;
+en el pom raíz valen 0, es decir, sin exigencia):
+
+| Módulo | Líneas (mínimo) | Ramas (mínimo) | Medido al fijarlo |
+|---|---|---|---|
+| `domain` | 90 % | 75 % | 96 % líneas, 85 % ramas |
+| `solver` | 93 % | 90 % | 98 % líneas, 96 % ramas |
+| `application` | 90 % | 75 % | 95 % líneas, 81 % ramas |
+
+Los umbrales dejan unos puntos de margen; no se bajan para hacer pasar un cambio: se agrega la
+prueba que falta. Si un cambio sube la cobertura de forma sostenida, súbalos. Para ver qué línea
+falta, abra el reporte del módulo (`./mvnw -q -pl application -am verify`).
 - Para una regla nueva del horario, una prueba en `domain` o `solver` es más rápida y clara que
   una de punta a punta.
 

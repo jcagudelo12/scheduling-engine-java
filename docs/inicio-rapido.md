@@ -223,6 +223,8 @@ El motor se configura con variables de entorno (ver
 |---|---|---|
 | `SCHED_ROLE` | `all` | `ingest`, `query` o `all` ([ADR 0005](adr/0005-varias-instancias-con-historial-compartido.md)) |
 | `SCHED_HTTP_PORT` | `8080` | Puerto HTTP (API del estudiante y sondas) |
+| `SCHED_MANAGEMENT_PORT` | `8081` | Puerto de administración: `/actuator/prometheus` y `/actuator/health`, **sin token** y sin pasar por Traefik. Solo para la red interna; no lo publique |
+| `SCHED_LOG_FORMAT` | `text` | `text` o `json` (un objeto JSON por línea, para un recolector de logs). Otro valor impide arrancar |
 | `SCHED_GRPC_PORT` | `50051` | Puerto gRPC de ingesta (solo roles `ingest` y `all`) |
 | `SCHED_NATS_URL` | `nats://localhost:4222` | Servidor NATS |
 | `SCHED_NATS_STREAM` | `SCHED_CATALOG` | Stream de JetStream con el historial |
@@ -264,6 +266,42 @@ el log.**
 | `SCHED_NATS_TLS_CA` | (ninguno) | PEM con la CA que firmó el certificado de NATS: activa TLS hacia NATS (use `SCHED_NATS_URL=tls://host:4222`) |
 
 `deploy/setup-dev.sh` genera todo lo necesario para el despliegue de desarrollo.
+
+### Métricas y logs
+
+Cada instancia expone sus métricas en el puerto de administración (`SCHED_MANAGEMENT_PORT`, `8081`),
+aparte del de los estudiantes y sin token. Con el motor en local (parte C):
+
+```sh
+curl -s localhost:8081/actuator/prometheus | grep '^sched_'   # métricas del motor
+curl -s localhost:8081/actuator/health                         # {"status":"UP",...}
+```
+
+En el despliegue con Docker el puerto `8081` no se publica al host (Traefik tampoco lo enruta). Para
+verlas hay un Prometheus opcional, en el perfil `observability`, que raspa cada instancia por la red
+interna y queda solo en `127.0.0.1:9090`:
+
+```sh
+docker compose -f deploy/docker-compose.yml --profile observability up -d
+# abrir http://localhost:9090 y probar, por ejemplo:
+#   sched:http_latency_seconds:p99           (p99 por endpoint, regla de deploy/prometheus/rules.yml)
+#   sum(rate(sched_search_incomplete_total[5m]))   (búsquedas cortadas por el tiempo máximo)
+#   sched_replica_stale                      (1 = réplica desactualizada)
+# Alertas: http://localhost:9090/alerts
+```
+
+Qué mide cada métrica: [arquitectura.md](arquitectura.md#observabilidad).
+
+Para logs en JSON (por ejemplo, para un recolector): `SCHED_LOG_FORMAT=json`. Cada solicitud acepta
+la cabecera `X-Request-Id` (o se genera una) y la devuelve en la respuesta; el mismo id sale en las
+líneas de log de esa solicitud (campo `request_id`), útil para seguir una consulta con problemas:
+
+```sh
+curl -si -H 'X-Request-Id: prueba-123' localhost:8080/health | grep -i x-request-id
+```
+
+Los logs **nunca** incluyen tokens, cuerpos de solicitud ni datos del estudiante
+([política](arquitectura.md#observabilidad)).
 
 ## Si algo falla
 

@@ -141,7 +141,10 @@ la conexión de cambios. El protocolo completo está en
 
 Cada capa es un módulo Maven. Las dependencias solo apuntan hacia adentro y Maven impide lo
 contrario: el dominio no puede importar Spring, gRPC ni NATS porque no los tiene como
-dependencia ([ADR 0001](adr/0001-arquitectura-hexagonal.md)).
+dependencia ([ADR 0001](adr/0001-arquitectura-hexagonal.md)). Además, las reglas de ArchUnit de
+[`quality`](../quality/src/test/java/sched/architecture/ArchitectureTest.java) lo vigilan en cada
+`verify` (ver [Pruebas y calidad](#pruebas-y-calidad)): una dependencia indebida, aunque
+compile, rompe la build.
 
 ```mermaid
 flowchart TB
@@ -183,12 +186,13 @@ flowchart TB
 |---|---|---|
 | `domain` | Modelo puro: `Catalog`, `Section`, `TimeSlot`, `CatalogEvent`. Sin dependencias externas | nada |
 | `solver` | `ForwardCheckingSolver` y `BacktrackingSolver`: búsqueda de combinaciones sin cruces | `domain` |
-| `application` | Casos de uso, `CatalogReplica` y el puerto `CatalogLog` | `domain`, `solver` |
+| `application` | Casos de uso, `CatalogReplica` y los puertos `CatalogLog` y `EngineMetrics` | `domain`, `solver` |
 | `proto` | Los `.proto` y `Convert`, que traduce entre protobuf y el dominio | `domain` |
 | `adapters/*` | Traducen el mundo exterior (HTTP, gRPC, NATS) a llamadas a los casos de uso | `application`, `proto` |
 | `server` | Crea los adaptadores y los conecta según `SCHED_ROLE`. Es el único que conoce todo | todos |
 | `simulation` | Institución simulada y simulador de escenarios | `application`, `solver`, `proto`, `in-memory` |
 | `benchmarks` | Microbenchmarks JMH del solver y del catálogo | `solver`, `domain` |
+| `quality` | Reglas de arquitectura (ArchUnit) y reporte agregado de cobertura (JaCoCo). Sin código de producción | todos (solo lee sus clases) |
 
 ## Qué clase hace qué
 
@@ -232,6 +236,90 @@ Para entender el código, conviene leerlo en este orden:
 5. **Composición** — [`EngineConfig`](../server/src/main/java/sched/server/EngineConfig.java):
    qué se crea según el rol. Es el mejor punto de partida para ver cómo se conecta todo.
 
+## Observabilidad
+
+El motor se mide por fuera del núcleo: `domain`, `solver` y `application` no conocen Micrometer
+(una regla de ArchUnit lo exige). `application` define el puerto
+[`EngineMetrics`](../application/src/main/java/sched/application/ports/EngineMetrics.java), con
+una implementación que no hace nada por defecto, y `server` lo implementa con Micrometer
+(`MicrometerEngineMetrics`). Así el mismo código de los casos de uso corre con o sin medición.
+
+**Puerto de administración.** `/actuator/prometheus` y `/actuator/health` se sirven en
+`SCHED_MANAGEMENT_PORT` (por defecto `8081`), aparte del `8080` de los estudiantes. Ese puerto no
+pasa por Traefik (que solo enruta el `8080`), no exige token y no expone ningún otro endpoint de
+actuator (`env`, `beans`, `heapdump`... responden 404). **Solo debe alcanzarse desde la red
+interna** (Prometheus): no lo publique al host ni lo ponga detrás del balanceador. Las sondas
+`/health` y `/ready` siguen en el `8080` y son las que usa el orquestador.
+
+**Métricas** (los nombres de Prometheus llevan el sufijo de su unidad: `_seconds`, `_total`):
+
+| Métrica | Tipo | Qué mide |
+|---|---|---|
+| `sched_http_latency_seconds{endpoint,status}` | histograma | Latencia de `/combinations` y `/alternatives`, con cubetas de 10, 25, 50, 100, **200** (el SLO del escenario E2), 500 ms y 1 s. De él salen los percentiles de todo el servicio con `histogram_quantile` |
+| `sched_http_latency_quantiles_seconds{endpoint,status,quantile}` | resumen | p50, p95 y p99 de esa réplica (no se promedian entre réplicas; use el histograma para eso) |
+| `sched_http_rejected_total{status}` | contador | Rechazos 4xx del motor: `401` (sin token o inválido), `400` (cuerpo inválido o contradice al token), `413` (cuerpo grande), `422` (tope de créditos) |
+| `sched_search_duration_seconds{operation}` y `..._quantiles_seconds` | histograma y resumen | Solo la búsqueda del solver, sin la lectura de la réplica ni el HTTP; `operation` es `combinations` o `alternatives` |
+| `sched_search_nodes{operation}` | resumen de distribución | Nodos explorados por búsqueda (solo `forward-checking`; el solver `backtracking` no los informa) |
+| `sched_search_incomplete_total{operation}` | contador | Búsquedas cortadas por `SCHED_SEARCH_TIMEOUT_MS` (respuesta con `complete=false`): la medida que deja pendiente el [ADR 0009](adr/0009-tiempo-maximo-de-la-busqueda.md) |
+| `sched_search_empty_total{operation}` | contador | Búsquedas sin ninguna combinación |
+| `sched_replica_seq` | gauge | `seq` del catálogo de la réplica (`-1` si aún no hay carga completa) |
+| `sched_replica_stale` | gauge 0/1 | `1` si la réplica está desactualizada ([ADR 0003](adr/0003-replica-del-catalogo.md)) |
+| `sched_replica_ready` | gauge 0/1 | Lo mismo que `/ready`: `1` si la instancia recibe tráfico |
+| `sched_follower_lag` | gauge | Mensajes del historial que el follower aún no lee (`0` = al día) |
+| `sched_follower_resyncs_total` | contador | Veces que el follower perdió NATS y empezó a releer el historial |
+| `sched_ingest_events_total{outcome}` | contador | Cambios de la institución: `applied`, `duplicate`, `gap` (rechazado, pide carga completa) y `failed` (no se pudo escribir) |
+| `sched_ingest_snapshots_total` | contador | Cargas completas escritas |
+| `sched_ingest_sync_lost_total` | contador | Avisos de pérdida de sincronía con la institución |
+
+Además salen las métricas estándar de la JVM y de Tomcat que publica Spring Boot. Todas llevan la
+etiqueta `application="sched-engine"`; Prometheus añade `instance`. Las etiquetas son de cardinalidad
+fija: ninguna lleva ids de estudiante, de curso ni de grupo.
+
+Para verlas, en el despliegue de desarrollo: `docker compose -f deploy/docker-compose.yml --profile
+observability up -d` y abrir <http://localhost:9090> (ver [inicio-rapido.md](inicio-rapido.md#métricas-y-logs)).
+[`deploy/prometheus/rules.yml`](../deploy/prometheus/rules.yml) trae reglas de ejemplo: percentiles del
+servicio, fracción de solicitudes dentro de 200 ms y alertas de p99, búsquedas cortadas y réplica
+desactualizada.
+
+**Logs.** `SCHED_LOG_FORMAT=text` (por defecto) o `json` (un objeto JSON por línea, formato ECS de
+Spring Boot, para un recolector de logs). Cada solicitud HTTP lleva un **id de correlación**: se acepta
+la cabecera `X-Request-Id` si es segura (letras, dígitos, `.`, `_`, `-`; hasta 64 caracteres), si no se
+genera un UUID; se devuelve en la respuesta y va en el MDC como `request_id`, así que aparece en cada
+línea de log de esa solicitud (en `json`, como campo; en `text`, entre corchetes). También lo llevan
+los 401. Lo aplica [`RequestIdFilter`](../adapters/gateway-http/src/main/java/sched/adapters/http/RequestIdFilter.java),
+el primero de la cadena de filtros.
+
+**Política de confidencialidad de los logs.** El motor no conserva datos personales y los logs no
+deben convertirse en un lugar donde sí se conserven:
+
+- Nunca se registran el token (ni la cabecera `Authorization`, ni sus tramos), el cuerpo de la
+  solicitud ni el id o los cursos del estudiante. Un rechazo registra solo el motivo genérico
+  (`firma_invalida`, `token_mal_formado`...) y el `kid` de la llave, que es público.
+- Las etiquetas de las métricas no llevan datos del estudiante.
+- Si algún día hiciera falta correlacionar con un estudiante, use un identificador truncado y con
+  hash, nunca el id (hay que decidirlo con la institución, porque aun así es un seudónimo).
+- Spring MVC, en nivel DEBUG, registra el cuerpo ya leído (`Read "application/json" to [...]`). Por
+  eso `application.properties` fija `org.springframework.web` en INFO aunque el nivel raíz sea DEBUG.
+  **No lo baje en producción.**
+- Lo comprueban [`LogConfidentialityTest`](../server/src/test/java/sched/server/LogConfidentialityTest.java)
+  y la prueba de extremo a extremo, que capturan los logs con nivel DEBUG y verifican que no aparece
+  ningún token, trozo de token, cuerpo ni id de estudiante.
+
+## Pruebas y calidad
+
+`./mvnw verify` ejecuta, además de las pruebas unitarias de cada módulo:
+
+| Qué | Dónde | Cómo |
+|---|---|---|
+| **Reglas de arquitectura** (ArchUnit) | [`quality`](../quality/src/test/java/sched/architecture/ArchitectureTest.java) | `domain` solo depende de `java.*`; `solver`, solo de `domain`; `application`, de `domain`, `solver` y SLF4J (nada de adaptadores, `server`, Spring, gRPC, protobuf, NATS, Jackson ni Micrometer); los adaptadores no dependen entre sí; nada depende de `server`, `simulation` ni `benchmarks`; sin ciclos entre los paquetes de primer nivel |
+| **Cobertura** (JaCoCo) | `target/site/jacoco` de cada módulo y `quality/target/site/jacoco-aggregate` (agregado) | `domain`, `solver` y `application` tienen un umbral mínimo de cobertura (líneas y ramas) que hace fallar `verify` si baja; el código generado de protobuf no cuenta. Umbrales y cómo subirlos: [CONTRIBUTING.md](../CONTRIBUTING.md#cobertura) |
+| **Integración con NATS real** (Testcontainers) | [`JetStreamIntegrationTest`](../adapters/nats-bus/src/test/java/sched/adapters/nats/JetStreamIntegrationTest.java) | `JetStreamCatalogLog` escribe una carga completa troceada (más de 500 grupos, con créditos y reglas) y cambios; `CatalogFollower` la sigue y la réplica queda igual; un hueco la deja desactualizada y no lista; una carga completa la recupera; NATS se cae y vuelve y el follower se reconecta |
+| **Extremo a extremo** | [`EngineEndToEndTest`](../server/src/test/java/sched/server/EngineEndToEndTest.java) | El motor completo arrancado con Spring Boot y puerto real, NATS real, mTLS en la ingesta y token Ed25519: carga por gRPC, consultas HTTP con JSON real, 401, 400, 413, 422, hueco y recuperación, métricas en el puerto de administración, id de correlación y logs sin datos |
+
+Las pruebas con Testcontainers usan `@Testcontainers(disabledWithoutDocker = true)`: sin Docker se
+saltan (no fallan) y el resto de la build pasa. En la CI (`ubuntu-latest` trae Docker) siempre
+corren. Todas caben en `verify` (la más lenta tarda unos 10 s); no hizo falta un perfil aparte.
+
 ## Dónde agregar cosas
 
 | Quiero… | Lo hago en… |
@@ -241,5 +329,7 @@ Para entender el código, conviene leerlo en este orden:
 | Exponer un endpoint nuevo | `gateway-http`, que llame a un caso de uso de `application` |
 | Cambiar el contrato con la institución | `proto/src/main/proto/institution/v1/`, más `Convert` y el adaptador gRPC |
 | Cambiar cómo se guarda el historial | Una nueva implementación de `CatalogLog`, conectada en `server` |
+| Medir algo nuevo del núcleo | Un método en el puerto `EngineMetrics` (`application`), llamado desde el caso de uso, e implementado con Micrometer en `server` (`MicrometerEngineMetrics`); documentarlo en [Observabilidad](#observabilidad) |
+| Agregar una regla de arquitectura | `quality/src/test/java/sched/architecture/ArchitectureTest.java` |
 
 Para las convenciones de trabajo, ver [CONTRIBUTING.md](../CONTRIBUTING.md).
