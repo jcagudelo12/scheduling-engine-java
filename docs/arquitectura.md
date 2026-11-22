@@ -176,6 +176,7 @@ Para entender el código, conviene leerlo en este orden:
    | Clase | Cuándo se ejecuta | Qué hace |
    |---|---|---|
    | `GenerateCombinations` | `POST /combinations` | Lee la réplica y llama al solver |
+   | `SuggestAlternatives` | `POST /alternatives` | Con la selección actual del estudiante, propone combinaciones que cambian lo mínimo (distancia, luego penalización), codificadas en un solo costo aditivo para el solver |
    | `IngestCatalog` | `LoadCatalog` (gRPC) | Escribe la carga completa en el historial |
    | `IngestCatalogEvent` | `SyncChanges` (gRPC) | Valida el `seq` con `IngestState` y escribe el cambio |
    | `ApplyLogEntry` | Por cada entrada del historial | Aplica la entrada a la réplica local |

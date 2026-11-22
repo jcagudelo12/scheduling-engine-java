@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import sched.adapters.grpc.catalog.CatalogGrpcService;
 import sched.adapters.grpc.events.CatalogEventsGrpcService;
+import sched.adapters.http.AlternativesController;
 import sched.adapters.http.CombinationsController;
 import sched.adapters.http.HealthController;
 import sched.adapters.nats.CatalogFollower;
@@ -21,6 +22,7 @@ import sched.application.IngestCatalog;
 import sched.application.IngestCatalogEvent;
 import sched.application.IngestState;
 import sched.application.Readiness;
+import sched.application.SuggestAlternatives;
 import sched.solver.BacktrackingSolver;
 import sched.solver.ForwardCheckingSolver;
 import sched.solver.Solver;
@@ -95,6 +97,13 @@ class EngineConfig {
     CombinationsController combinationsController(
             Solver solver, CatalogReplica replica, @Value("${sched.max-combinations}") int maxCombinations) {
         return new CombinationsController(new GenerateCombinations(solver, replica, maxCombinations));
+    }
+
+    @Bean
+    @ConditionalOnExpression(SERVES_QUERIES)
+    AlternativesController alternativesController(
+            Solver solver, CatalogReplica replica, @Value("${sched.max-alternatives}") int maxAlternatives) {
+        return new AlternativesController(new SuggestAlternatives(solver, replica, maxAlternatives));
     }
 
     // gRPC de ingesta, según el rol.

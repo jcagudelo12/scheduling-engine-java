@@ -3,7 +3,6 @@ package sched.adapters.http;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,7 +11,6 @@ import org.springframework.web.bind.annotation.RestController;
 import sched.application.AppException;
 import sched.application.Combinations;
 import sched.application.GenerateCombinations;
-import sched.application.PortException;
 import sched.application.ScoredSchedule;
 import sched.domain.CourseId;
 import sched.domain.Preferences;
@@ -89,30 +87,21 @@ public class CombinationsController {
 
     @ExceptionHandler(InvalidRequestException.class)
     public ResponseEntity<InvalidRequestDto> handleInvalidRequest(InvalidRequestException error) {
-        return ResponseEntity.badRequest().body(new InvalidRequestDto("invalid_request", error.getMessage()));
+        return HttpErrors.invalidRequest(error.getMessage());
     }
 
     /** Más específico que el manejador general: Spring elige este para el tope de créditos. */
     @ExceptionHandler(AppException.CreditLimitExceeded.class)
     public ResponseEntity<CreditLimitErrorDto> handleCreditLimit(AppException.CreditLimitExceeded error) {
-        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
-                .body(new CreditLimitErrorDto("credit_limit_exceeded", error.totalCredits(), error.maxCredits()));
+        return HttpErrors.creditLimit(error);
     }
 
     @ExceptionHandler(AppException.class)
     public ResponseEntity<String> handle(AppException error) {
-        HttpStatus status = switch (error) {
-            case AppException.CatalogUnavailable e -> HttpStatus.SERVICE_UNAVAILABLE;
-            case AppException.PortFailure e when e.kind() == PortException.Kind.UNAVAILABLE ->
-                    HttpStatus.SERVICE_UNAVAILABLE;
-            case AppException.PortFailure e -> HttpStatus.INTERNAL_SERVER_ERROR;
-            case AppException.SequenceGap e -> HttpStatus.INTERNAL_SERVER_ERROR;
-            case AppException.CreditLimitExceeded e -> HttpStatus.UNPROCESSABLE_ENTITY;
-        };
-        return ResponseEntity.status(status).body(error.getMessage());
+        return HttpErrors.general(error);
     }
 
-    private static List<TimeSlot> parseAvoid(List<SlotDto> avoid) {
+    static List<TimeSlot> parseAvoid(List<SlotDto> avoid) {
         if (avoid == null) {
             return List.of();
         }

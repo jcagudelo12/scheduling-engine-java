@@ -13,6 +13,9 @@ Términos del proyecto. Entre paréntesis, el nombre que se usa en el código cu
 | **Tope de créditos** (`max_credits`, `EnrollmentRules`) | Máximo de créditos que un estudiante puede matricular en el periodo, parametrizado por la institución. 0 = sin tope. Se verifica antes de la búsqueda; si se supera, la API responde `422` |
 | **Restricción suave** (`Preferences`, `avoid`) | Preferencia del estudiante que no descarta combinaciones, solo las ordena. Hoy: ventanas de horario a evitar |
 | **Penalización** (`penalty`) | Costo de una combinación según las preferencias: número de franjas elegidas que se solapan con alguna ventana a evitar. Se devuelve la combinación de menor penalización primero |
+| **Distancia** (`distance`) | De una alternativa `a` a la selección original `s`: d(a, s) = \|{ i : aᵢ ≠ sᵢ }\|, el número de cursos con elección cuyo grupo cambió. Un curso sin elección no suma |
+| **Alternativa** (`Alternative`, `POST /alternatives`) | Combinación sin cruces y con cupo que sustituye una selección que dejó de servir (grupo sin cupo o cruce), cambiando lo mínimo. Cada cambio indica su razón: `no_seats`, `clash`, `not_selected` o `rearranged` |
+| **Orden lexicográfico** | Orden de las alternativas: primero menor distancia y, solo a igual distancia, menor penalización. No es una suma ponderada: conservar los grupos elegidos tiene prioridad absoluta sobre las preferencias |
 | **Cruce** (`overlaps`) | Dos franjas del mismo día que se superponen. Una combinación válida no tiene cruces |
 | **Combinación** (`Schedule`) | Un grupo por cada curso pedido, sin cruces entre ellos |
 | **Contexto del estudiante** (`StudentContext`) | Lo que el motor sabe del estudiante en una solicitud: su identificador y sus cursos habilitados. Llegará en un token firmado ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) |

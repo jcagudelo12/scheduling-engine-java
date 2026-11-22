@@ -153,6 +153,116 @@ curl -X POST localhost:8080/combinations -H 'content-type: application/json' \
   -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"]}'
 ```
 
+## `POST /alternatives`
+
+Cuando un grupo de la selección del estudiante se quedó sin cupo, o la selección tiene un cruce,
+propone combinaciones que **conservan la mayor cantidad posible de sus elecciones** y cambian
+solo lo necesario, filtradas por cupo. Cada cambio indica qué conflicto resuelve.
+
+### Solicitud
+
+```http
+POST /alternatives
+Content-Type: application/json
+
+{
+  "student_id": "est-001",
+  "eligible_courses": ["MAT101", "FIS101"],
+  "avoid": [{ "day": "monday", "start_minute": 360, "end_minute": 480 }],
+  "selection": { "MAT101": "MAT101-01", "FIS101": "FIS101-02" }
+}
+```
+
+Los campos son los de [`/combinations`](#solicitud) más:
+
+| Campo | Tipo | Obligatorio | Descripción |
+|---|---|---|---|
+| `selection` | objeto | no | Selección actual: `{ "<curso>": "<grupo>" }`. Puede no cubrir todos los cursos. Ausente = sin elecciones |
+
+Un curso **sin elección** se elige libremente: aporta distancia 0 con cualquier grupo y aparece
+en `changes` con razón `not_selected`. Una elección para un curso que no está en
+`eligible_courses`, o un grupo que pertenece a otro curso, es un `400`. Un grupo elegido que no
+existe en el catálogo cuenta como sin cupo.
+
+### Respuesta `200`
+
+```json
+{
+  "catalog_seq": 1,
+  "stale": false,
+  "total_credits": 7,
+  "max_credits": 18,
+  "selection_valid": false,
+  "conflicts": {
+    "without_seats": [{ "course": "MAT101", "section": "MAT101-01" }],
+    "clashes": []
+  },
+  "alternatives": [
+    {
+      "distance": 1,
+      "penalty": 0,
+      "changes": [
+        { "course": "MAT101", "from": "MAT101-01", "to": "MAT101-02", "reason": "no_seats" }
+      ],
+      "sections": [
+        {
+          "section_id": "MAT101-02",
+          "course_id": "MAT101",
+          "slots": [{ "day": "tuesday", "start_minute": 480, "end_minute": 600 }]
+        },
+        {
+          "section_id": "FIS101-02",
+          "course_id": "FIS101",
+          "slots": [{ "day": "friday", "start_minute": 480, "end_minute": 600 }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Campo | Descripción |
+|---|---|
+| `catalog_seq`, `stale`, `total_credits`, `max_credits` | Igual que en `/combinations` |
+| `selection_valid` | `true` si la selección cubre todos los cursos, todos sus grupos tienen cupo y no se cruzan. Entonces la primera alternativa es la propia selección (`distance` 0) |
+| `conflicts.without_seats` | Grupos de la selección sin cupo o inexistentes |
+| `conflicts.clashes` | Pares `{first, second}` de grupos de la selección con cupo que se cruzan entre sí |
+| `alternatives` | Como máximo `SCHED_MAX_ALTERNATIVES` (por defecto 5), en el orden descrito abajo. Vacío si no hay ninguna combinación completa posible |
+| `alternatives[].distance` | Cursos con elección cuyo grupo difiere de la selección |
+| `alternatives[].penalty` | Igual que `schedules[].penalty` de `/combinations` |
+| `alternatives[].changes` | Un elemento por curso cuyo grupo difiere de la selección, con `from` (`null` si no había elección), `to` y `reason` |
+| `alternatives[].sections` | Un grupo por curso pedido, en el mismo formato que `/combinations` |
+
+Razones (`reason`):
+
+| Valor | Significado |
+|---|---|
+| `no_seats` | El grupo elegido no tiene cupo o no existe |
+| `clash` | El grupo elegido tiene cupo pero se cruza con otro grupo con cupo de la selección |
+| `not_selected` | El curso no tenía elección (no suma a `distance`) |
+| `rearranged` | El grupo elegido era válido; cambia para acomodar los cambios de otros cursos |
+
+### Orden
+
+Las alternativas se ordenan **lexicográficamente**: primero menor `distance` y, entre igual
+distancia, menor `penalty`; los empates se resuelven por ids de grupo. No es una suma
+ponderada: conservar los grupos elegidos tiene prioridad absoluta sobre `avoid`, así que una
+alternativa de distancia 1 con penalización alta va antes que una de distancia 2 con
+penalización 0. La búsqueda es exacta: son las mejores de todas las posibles.
+
+### Errores
+
+Los de [`/combinations`](#errores): `400` (cuerpo inválido, `avoid` inválido, `selection` con un
+curso no pedido, un grupo de otro curso o un grupo vacío; cuerpo
+`{ "error": "invalid_request", "message": "..." }`), `422` por créditos, `503` y `500`.
+
+### Ejemplo con curl
+
+```sh
+curl -X POST localhost:8080/alternatives -H 'content-type: application/json' \
+  -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"],"selection":{"MAT101":"MAT101-01","FIS101":"FIS101-02"}}'
+```
+
 ## Sondas
 
 | Endpoint | Responde `200` cuando | Si no | Lo usa |
