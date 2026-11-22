@@ -3,6 +3,7 @@ package sched.benchmarks;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -24,6 +25,7 @@ import sched.domain.Weekday;
 import sched.solver.BacktrackingSolver;
 import sched.solver.ForwardCheckingSolver;
 import sched.solver.Problem;
+import sched.solver.SectionCost;
 import sched.solver.Solver;
 
 /**
@@ -48,6 +50,12 @@ public class SolverComparisonBenchmark {
     private Solver solver;
     private Problem regular;
     private Problem noSolution;
+    private Problem enrollment5;
+    private Problem enrollment50;
+    private Problem enrollment500;
+    private Problem enrollmentCost5;
+    private Problem enrollmentCost50;
+    private Problem enrollmentCost500;
 
     @Setup
     public void setup() {
@@ -58,6 +66,57 @@ public class SolverComparisonBenchmark {
         };
         regular = regularProblem();
         noSolution = noSolutionProblem();
+        enrollment5 = enrollmentProblem(5, SectionCost.ZERO);
+        enrollment50 = enrollmentProblem(50, SectionCost.ZERO);
+        enrollment500 = enrollmentProblem(500, SectionCost.ZERO);
+        enrollmentCost5 = enrollmentProblem(5, ENROLLMENT_COST);
+        enrollmentCost50 = enrollmentProblem(50, ENROLLMENT_COST);
+        enrollmentCost500 = enrollmentProblem(500, ENROLLMENT_COST);
+    }
+
+    /** Pares de días de las sesiones semanales (lunes/miércoles, martes/jueves, ...). */
+    private static final Weekday[][] DAY_PAIRS = {
+        {Weekday.MONDAY, Weekday.WEDNESDAY},
+        {Weekday.TUESDAY, Weekday.THURSDAY},
+        {Weekday.WEDNESDAY, Weekday.FRIDAY},
+        {Weekday.MONDAY, Weekday.THURSDAY},
+        {Weekday.TUESDAY, Weekday.FRIDAY},
+        {Weekday.THURSDAY, Weekday.SATURDAY},
+    };
+
+    /** Penaliza franjas que empiezan antes de 08:00 o terminan después de 18:00, más un término por grupo. */
+    private static final SectionCost ENROLLMENT_COST = section -> {
+        long cost = Math.floorMod(section.id().value().hashCode(), 7);
+        for (TimeSlot t : section.slots()) {
+            if (t.start() < 8 * 60) {
+                cost += 100;
+            }
+            if (t.end() > 18 * 60) {
+                cost += 100;
+            }
+        }
+        return cost;
+    };
+
+    /** 7 cursos × 6 grupos, 2 franjas de 120 min por grupo, generados con semilla fija. */
+    private static Problem enrollmentProblem(int maxResults, SectionCost cost) {
+        Random random = new Random(42);
+        List<Section> candidates = new ArrayList<>();
+        List<CourseId> courseIds = new ArrayList<>();
+        for (int c = 0; c < 7; c++) {
+            courseIds.add(new CourseId("M" + c));
+            for (int s = 0; s < 6; s++) {
+                Weekday[] days = DAY_PAIRS[random.nextInt(DAY_PAIRS.length)];
+                int start = 360 + random.nextInt(15) * 60; // inicio entre 06:00 y 20:00, termina a las 22:00 como tarde
+                List<TimeSlot> slots = new ArrayList<>();
+                for (Weekday d : days) {
+                    slots.add(TimeSlot.of(d, start, start + 120).orElseThrow());
+                }
+                candidates.add(new Section(
+                        new SectionId("M" + c + "-" + s), new CourseId("M" + c), slots, 30));
+            }
+        }
+        return new Problem(courseIds, candidates, maxResults, cost);
     }
 
     private static Problem regularProblem() {
@@ -104,5 +163,35 @@ public class SolverComparisonBenchmark {
     @Benchmark
     public List<Schedule> noSolution7x8() {
         return solver.solve(noSolution);
+    }
+
+    @Benchmark
+    public List<Schedule> enrollment5() {
+        return solver.solve(enrollment5);
+    }
+
+    @Benchmark
+    public List<Schedule> enrollment50() {
+        return solver.solve(enrollment50);
+    }
+
+    @Benchmark
+    public List<Schedule> enrollment500() {
+        return solver.solve(enrollment500);
+    }
+
+    @Benchmark
+    public List<Schedule> enrollmentCost5() {
+        return solver.solve(enrollmentCost5);
+    }
+
+    @Benchmark
+    public List<Schedule> enrollmentCost50() {
+        return solver.solve(enrollmentCost50);
+    }
+
+    @Benchmark
+    public List<Schedule> enrollmentCost500() {
+        return solver.solve(enrollmentCost500);
     }
 }
