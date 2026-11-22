@@ -32,12 +32,15 @@ public final class IngestCatalog {
      */
     public int execute(long seq, List<SectionSeats> sections, List<Course> courses, EnrollmentRules rules)
             throws AppException {
-        try {
-            catalogLog.append(new CatalogLogEntry.Snapshot(seq, sections, courses, rules));
-        } catch (PortException e) {
-            throw new AppException.PortFailure(e);
+        // Bajo el candado de la ingesta, para que ningún cambio se intercale con la carga.
+        synchronized (ingest) {
+            try {
+                catalogLog.append(new CatalogLogEntry.Snapshot(seq, sections, courses, rules));
+            } catch (PortException e) {
+                throw new AppException.PortFailure(e);
+            }
+            ingest.reset(seq);
         }
-        ingest.reset(seq);
         log.info("carga completa escrita en el historial: seq={} grupos={} cursos={} max_creditos={}",
                 seq, sections.size(), courses.size(), rules.maxCredits());
         return sections.size();

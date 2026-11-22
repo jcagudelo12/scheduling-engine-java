@@ -117,17 +117,23 @@ Respuestas posibles:
 |---|---|---|
 | `ack { seq }` | Aplicado, o ya estaba aplicado si el `seq` era repetido | Avanzar al siguiente |
 | `resync_required { expected_seq, received_seq }` | Hay un hueco: se esperaba `expected_seq`. Con `expected_seq = 0`, el motor no tiene catálogo | Hacer una carga completa |
-| `rejected { seq, reason }` | Datos inválidos, por ejemplo una franja con fin antes del inicio | Registrar el error. El `seq` **no se consume**: hay que corregir el dato y reenviar ese mismo `seq`, o hacer una carga completa |
+| `rejected { seq, reason }` | Datos inválidos (franja con fin antes del inicio) o fallo al escribir en el historial (por ejemplo, NATS no disponible) | Registrar el error. El `seq` **no se consume**: hay que corregir el dato y reenviar ese mismo `seq`, o hacer una carga completa |
 
 Detalles a tener en cuenta:
 
+- **El `seq` solo se consume tras escribir:** si el motor no pudo escribir el cambio en el
+  historial, responde `rejected` y el `seq` queda libre; al reenviarlo se escribe de verdad y se
+  responde `ack`. Un `ack` siempre significa que el cambio está en el historial.
+- **Orden con varios flujos:** si el SDK reabre `SyncChanges` mientras el anterior sigue abierto,
+  el motor serializa la validación y la escritura de todos los flujos, así que el historial
+  queda en orden de `seq`. Aun así conviene cerrar el flujo anterior.
 - **Idempotencia:** reenviar un `seq` ya aceptado responde `ack` y no cambia nada. Ante la duda
   tras una reconexión, el SDK puede reenviar lo último sin riesgo.
 - **Grupo desconocido:** `seats_changed` sobre un grupo que el motor no tiene responde `ack` y
   avanza el `seq`, pero no crea el grupo, porque no tiene sus datos. Para un grupo nuevo se usa
   `section_upserted`.
 - **Cerrar el stream** marca todas las réplicas como desactualizadas (`stale = true` en las
-  respuestas a estudiantes) hasta que llega el siguiente `seq` o una carga completa. Por eso el
+  respuestas a estudiantes) hasta que llega el siguiente `seq` o una carga completa (`/ready` pasa a `503` mientras tanto). Por eso el
   SDK debe mantenerlo abierto y reconectarse rápido si se cae.
 - **Tras un hueco**, la ingesta rechaza todo cambio con `resync_required` hasta recibir una carga
   completa.
