@@ -67,3 +67,44 @@ Implementado en el adaptador HTTP (`adapters/gateway-http`: `JwtAuthFilter` y el
   Con `jwt` y sin llaves, emisor o audiencia, el servidor no arranca.
 - **Pendiente:** el WebSocket de avisos en vivo (cuando exista) debe verificar el mismo token al
   abrirse. Las herramientas `keygen` y `token` del simulador firman tokens de prueba.
+
+## Nota de revisión (2026-11-22): Ed25519 con BouncyCastle y rechazos baratos antes de la firma
+
+La decisión de verificar "solo con el JDK" se revisa por una razón medida: con `SCHED_AUTH=jwt`
+la firma Ed25519 consumía ~790 us de CPU por solicitud (70 % del total) y una réplica de 2 núcleos
+se saturaba cerca de 1.700 solicitudes/s, contra ~5.000 sin token
+([perfil](../../bench/results/profile-server.md)). El resto de la decisión (token JWS EdDSA,
+`alg` exacto, `kid`, claims, errores, sin librerías JWT) no cambia, ni el formato del token ni el
+contrato HTTP. Sigue sin guardarse estado de autenticación entre solicitudes: cada una verifica su firma.
+
+Medición (JMH, `JwtVerifyBenchmark`, esta máquina, token de 6 cursos, microsegundos por operación):
+
+| | Antes | Después |
+|---|--:|--:|
+| Verificación completa (`JwtVerifier`) | 867 | **97** |
+| Solo la firma, `Signature` Ed25519 del JDK 25 | 875 (861 reutilizando la instancia) | |
+| Solo la firma, BouncyCastle 1.87 (`Ed25519.verify`, llave en bytes) | 107 | |
+| Solo la firma, BouncyCastle con la llave decodificada una vez (`PublicPoint`) | 97 | |
+| Base64 y JSON de cabecera y claims | 1,8 | |
+
+- **Se usa BouncyCastle** (`bcprov-jdk18on` 1.87, solo la clase `org.bouncycastle.math.ec.rfc8032.Ed25519`, no
+  el proveedor JCA) porque es ~9 veces más rápido que el JDK, muy por encima del umbral de 2 veces que
+  se fijó para justificar una dependencia. Es una dependencia de compilación solo de `adapters/gateway-http`.
+  La llave pública se decodifica y valida una vez al construir el verificador; por solicitud ya no se
+  hace `Signature.getInstance`, ni `initVerify`, ni se decodifica la llave. El trabajo restante que no es
+  criptografía (Base64 y JSON) cuesta ~2 us y no justifica más cambios.
+- **Mismas garantías que el JDK:** BouncyCastle sigue RFC 8032 y rechaza una `S` no canónica (`S >= L`), una
+  firma de longitud distinta de 64 bytes y cualquier bit alterado. Las pruebas de `JwtVerifierTest` lo
+  comprueban (firma maleable `S + L`, alteración bit a bit contrastada con el JDK, clave equivocada, token
+  truncado, `alg` distinto de `EdDSA` y `none`).
+- **Rechazos baratos antes de la firma.** El orden pasa a ser: tamaño, estructura, cabecera (`alg`, `kid`...),
+  forma de la firma (64 bytes), claims (`exp`, `nbf`, `iat`, vida, `iss`, `aud`, `sub`, `courses`) y por último la firma.
+  Un token vencido, de otra audiencia o mal formado no cuesta una verificación. Los claims se leen sin firma
+  verificada solo para rechazar; si algo falla se rechaza, y nunca se devuelven ni se aceptan sin la firma válida.
+  Consecuencia visible solo en el log: un token que además de tener la firma mala está vencido se registra
+  como `vencido`, no como `firma_invalida`; el cliente recibe el mismo `401`.
+- **Dependencia transitiva:** `jnats` declara `bcprov-lts8on` pero no usa ninguna clase de BouncyCastle; se
+  excluye en el `pom` raíz para que no convivan dos jar firmados con las mismas clases.
+- **ES256 como referencia** (no implementado; cambiaría el contrato con la institución): ECDSA P-256 verifica
+  en 814 us con el JDK y 99 us con BouncyCastle, es decir, no es más rápido que Ed25519 en ninguno de los dos casos
+  (97 us), así que cambiar de algoritmo no ahorra CPU.

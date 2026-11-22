@@ -264,4 +264,141 @@ class JwtVerifierTest {
         assertEquals(false, error.getMessage().contains("SECRETO"));
         assertEquals("emisor_incorrecto", error.getMessage());
     }
+
+    // --- Firma Ed25519 (BouncyCastle) y rechazos baratos antes de ella ---------------------------------
+
+    /** Orden de la curva Ed25519 (RFC 8032): una S >= L no es canónica y debe rechazarse. */
+    private static final java.math.BigInteger ED25519_L = java.math.BigInteger.ONE.shiftLeft(252)
+            .add(new java.math.BigInteger("27742317777372353535851937790883648493"));
+
+    private static byte[] littleEndian(java.math.BigInteger value, int length) {
+        byte[] out = new byte[length];
+        byte[] big = value.toByteArray(); // big-endian, puede traer un 0 inicial
+        for (int i = 0; i < big.length && i < length; i++) {
+            out[i] = big[big.length - 1 - i];
+        }
+        return out;
+    }
+
+    private static String withSignature(String token, byte[] signature) {
+        return token.substring(0, token.lastIndexOf('.') + 1) + TestTokens.b64(signature);
+    }
+
+    private static byte[] signatureOf(String token) {
+        return java.util.Base64.getUrlDecoder().decode(token.substring(token.lastIndexOf('.') + 1));
+    }
+
+    @Test
+    void nonCanonicalSignatureWithSPlusLIsRejected() {
+        String valid = token(claims());
+        byte[] sig = signatureOf(valid);
+        byte[] s = new byte[32];
+        System.arraycopy(sig, 32, s, 0, 32);
+        byte[] bigEndian = new byte[32];
+        for (int i = 0; i < 32; i++) {
+            bigEndian[i] = s[31 - i];
+        }
+        // S + L representa el mismo escalar módulo L (una firma "maleable"), pero no es canónica.
+        byte[] malleable = sig.clone();
+        System.arraycopy(littleEndian(new java.math.BigInteger(1, bigEndian).add(ED25519_L), 32), 0, malleable, 32, 32);
+
+        assertEquals(Reason.BAD_SIGNATURE, rejected(withSignature(valid, malleable)));
+    }
+
+    @Test
+    void anySingleBitFlipInTheSignatureIsRejectedLikeTheJdkDoes() throws Exception {
+        String valid = token(claims());
+        byte[] sig = signatureOf(valid);
+        byte[] signedInput = valid.substring(0, valid.lastIndexOf('.')).getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        java.security.Signature jdk = java.security.Signature.getInstance("Ed25519");
+        for (int bit = 0; bit < sig.length * 8; bit += 3) {
+            byte[] flipped = sig.clone();
+            flipped[bit / 8] ^= (byte) (1 << (bit % 8));
+            jdk.initVerify(key.getPublic());
+            jdk.update(signedInput);
+            boolean jdkAccepts;
+            try {
+                jdkAccepts = jdk.verify(flipped);
+            } catch (java.security.SignatureException e) {
+                jdkAccepts = false;
+            }
+            assertEquals(false, jdkAccepts, "el JDK debería rechazar el bit " + bit);
+            assertEquals(Reason.BAD_SIGNATURE, rejected(withSignature(valid, flipped)), "bit " + bit);
+        }
+        // La firma original sigue aceptándose (la prueba no rechaza todo).
+        assertEquals("est-001", verifier.verify(valid).subject());
+    }
+
+    @Test
+    void signaturesOfTheWrongLengthAreRejected() {
+        String valid = token(claims());
+        byte[] sig = signatureOf(valid);
+        assertEquals(Reason.BAD_SIGNATURE, rejected(withSignature(valid, java.util.Arrays.copyOf(sig, 63))));
+        assertEquals(Reason.BAD_SIGNATURE, rejected(withSignature(valid, java.util.Arrays.copyOf(sig, 65))));
+        assertEquals(Reason.BAD_SIGNATURE, rejected(withSignature(valid, new byte[64])));
+    }
+
+    @Test
+    void truncatedTokensAreRejected() {
+        String valid = token(claims());
+        for (int cut : new int[] {valid.length() - 1, valid.length() - 10, valid.lastIndexOf('.'),
+                valid.lastIndexOf('.') - 5, valid.indexOf('.'), 10, 1}) {
+            String truncated = valid.substring(0, cut);
+            assertThrows(InvalidTokenException.class, () -> verifier.verify(truncated), "corte en " + cut);
+        }
+    }
+
+    @Test
+    void anotherAlgorithmOrNoneIsRejectedEvenWithAValidEdDsaSignatureOverTheSameInput() {
+        // Misma firma Ed25519 válida, pero la cabecera dice otro algoritmo: se rechaza por la cabecera.
+        for (String alg : new String[] {"none", "HS256", "ES256", "RS256", "Ed25519"}) {
+            String signed = TestTokens.sign(key.getPrivate(), TestTokens.header(alg, "k1"), claims());
+            assertEquals(Reason.UNSUPPORTED_ALGORITHM, rejected(signed), alg);
+        }
+    }
+
+    @Test
+    void claimsAreRejectedBeforeTheSignatureIsChecked() {
+        // Firma basura (64 bytes) en tokens cuyos claims ya son inaceptables: el motivo es el del claim,
+        // lo que prueba que se rechazó sin llegar a la verificación criptográfica.
+        byte[] garbage = new byte[64];
+        java.util.Arrays.fill(garbage, (byte) 7);
+        var header = TestTokens.header("EdDSA", "k1");
+
+        var expired = TestTokens.claims(NOW.minusSeconds(3600), "est-001", java.util.List.of("MAT101"));
+        assertEquals(Reason.EXPIRED, rejected(TestTokens.unsigned(header, expired, garbage)));
+
+        var otherAudience = claims();
+        otherAudience.put("aud", "otra-audiencia");
+        assertEquals(Reason.AUDIENCE, rejected(TestTokens.unsigned(header, otherAudience, garbage)));
+
+        var otherIssuer = claims();
+        otherIssuer.put("iss", "otro-emisor");
+        assertEquals(Reason.ISSUER, rejected(TestTokens.unsigned(header, otherIssuer, garbage)));
+
+        var future = claims();
+        future.put("nbf", NOW.plusSeconds(3600).getEpochSecond());
+        assertEquals(Reason.NOT_YET_VALID, rejected(TestTokens.unsigned(header, future, garbage)));
+
+        // Y con claims aceptables pero firma basura, sí llega a la firma y la rechaza.
+        assertEquals(Reason.BAD_SIGNATURE, rejected(TestTokens.unsigned(header, claims(), garbage)));
+    }
+
+    @Test
+    void claimsAreNeverReturnedWithoutAValidSignature() {
+        // Payload perfecto, firma de otra llave: ni siquiera se devuelven los claims.
+        String forged = TestTokens.sign(otherKey.getPrivate(), "k1", claims());
+        assertEquals(Reason.BAD_SIGNATURE, rejected(forged));
+    }
+
+    @Test
+    void nonEd25519KeysAreRefusedWhenBuildingTheVerifier() throws Exception {
+        var rsa = java.security.KeyPairGenerator.getInstance("RSA");
+        rsa.initialize(2048);
+        var settings = new JwtVerifier.Settings(TestTokens.ISSUER, TestTokens.AUDIENCE, Duration.ofSeconds(30),
+                Duration.ofMinutes(15));
+        var rsaKey = rsa.generateKeyPair().getPublic();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> new JwtVerifier(Map.of("k1", rsaKey), settings));
+    }
 }

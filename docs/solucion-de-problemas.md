@@ -101,7 +101,8 @@ motivo; el motivo exacto (`firma_invalida`, `vencido`, `emisor_incorrecto`, `kid
 queda en el log del motor, con el `kid` y sin el token (`token rechazado: motivo=…`). Revisa que
 `iss` y `aud` coincidan con `SCHED_JWT_ISSUER` y `SCHED_JWT_AUDIENCE`, que el `kid` esté entre las
 llaves del motor, que `exp - iat` no supere `SCHED_JWT_MAX_TTL_S` y que los relojes estén
-sincronizados (tolerancia: `SCHED_JWT_CLOCK_SKEW_S`).
+sincronizados (tolerancia: `SCHED_JWT_CLOCK_SKEW_S`). Los rechazos baratos (formato, `alg`, `kid`, vencimiento, `iss`, `aud`) se
+evalúan antes que la firma: un token con la firma mala y además vencido se registra como `vencido`.
 
 ### El simulador dice `error: UNAVAILABLE: io exception`
 

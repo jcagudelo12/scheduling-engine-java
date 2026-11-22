@@ -18,6 +18,8 @@
         <dependency><groupId>org.springframework</groupId><artifactId>spring-webmvc</artifactId></dependency>
         <!-- JSON de las cabeceras y los claims del token firmado (ADR 0004); sin librerías JWT. -->
         <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+        <!-- Solo la aritmética Ed25519 (org.bouncycastle.math.ec.rfc8032) de la firma del token; ver ADR 0004. -->
+        <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId></dependency>
         <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId></dependency>
         <!-- El filtro del tamaño del cuerpo; en ejecución lo aporta Tomcat. -->
         <dependency>

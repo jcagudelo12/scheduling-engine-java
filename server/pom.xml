@@ -55,17 +55,6 @@
                     <classifier>exec</classifier>
                 </configuration>
             </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <configuration>
-                    <!-- jnats trae bcprov-lts8on con las mismas clases org.bouncycastle que bcpkix-jdk18on
-                         (solo de prueba): en las pruebas, que no usan NATS, se deja fuera para que no choquen. -->
-                    <classpathDependencyExcludes>
-                        <classpathDependencyExclude>org.bouncycastle:bcprov-lts8on</classpathDependencyExclude>
-                    </classpathDependencyExcludes>
-                </configuration>
-            </plugin>
         </plugins>
     </build>
 </project>
