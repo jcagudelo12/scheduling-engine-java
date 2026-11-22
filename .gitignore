@@ -4,6 +4,10 @@ target/
 # Resultados crudos de la prueba de carga (se regeneran con bench/run.sh)
 bench/scenario.json
 bench/students.json
+bench/alternatives.json
+bench/worst.json
+bench/worst-hot.json
+bench/drain.txt
 bench/results*/*.json
 bench/results*/*.txt
 bench/.venv/

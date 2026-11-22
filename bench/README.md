@@ -18,6 +18,58 @@ Requiere Docker, Java 25 y Python 3. El script construye la imagen, carga el cat
 simulador de institución y deja el reporte en `results/report.md` y las gráficas en
 `results/*.png` (versión clara y oscura).
 
+## Prueba del pico de matrícula (E1, E2 y ADR 0009)
+
+Simula la apertura de una ventana de matrícula, no una tasa constante: la tasa de llegada sube
+en rampa hasta el pico, se mantiene (meseta), y baja. Se mide solo la meseta.
+
+```sh
+bench/run-pico.sh                                        # 1 réplica a 1.000-8.000/s y 3 réplicas a 4.000-12.000/s
+RAMP=30 HOLD=60 DOWN=10 STEPS="1:2000 3:8000" bench/run-pico.sh   # pasos "réplicas:tasa" a elección
+MODE=worst bench/run-pico.sh                             # peor caso 7x8 (ver abajo)
+MODE=worst SEARCH_TIMEOUT_MS=0 bench/run-pico.sh         # el mismo, sin tiempo máximo (referencia)
+python3 bench/report_pico.py bench/results pico 60       # tablas de la corrida (prefijo y segundos de meseta)
+```
+
+Requiere lo mismo que `run.sh` (Docker, Java 25, Python 3). Cada paso levanta de cero
+`bench/docker-compose.pico.yml` (NATS, la instancia de ingesta, 1 o 3 réplicas de consulta y Traefik
+sin los límites por IP del despliegue), carga el catálogo y lanza k6 y la ráfaga de cupos
+alineados en el tiempo. Corre sin token ni TLS, igual que `run.sh`.
+
+| Pieza | Qué hace |
+|---|---|
+| `generate_scenario.py --profile itm` | Catálogo y solicitudes del pico (ver abajo). `run-pico.sh` lo invoca; sin `--profile` el generador sigue produciendo los datos de `run.sh`, idénticos a los de antes |
+| `load-pico.js` | k6 con `ramping-arrival-rate`: ~80 % `/combinations` (35 % con `avoid`, 0,5 % perfiles 7x8) y ~20 % `/alternatives` (selección con un grupo lleno, `enrolled`) |
+| `seat-storm` (simulador) | Vacía grupos populares a `STORM_RATE` (10 por segundo) durante la meseta, por gRPC, para E1 |
+| `report_pico.py` | Resume los JSON de k6, las métricas Prometheus de cada réplica y el uso de CPU |
+
+**Datos del perfil `itm`** (semilla fija): 24 programas x 9 semestres, 5 o 6 asignaturas por semestre
+(las de un semestre comparten estudiantes y 2 de los primeros 4 semestres son de servicio, compartidas
+entre programas), 1.016 asignaturas y ~3.500 grupos (2 a 6 por asignatura, 8 en las 35 más demandadas),
+franjas de 2 h entre 06:00 y 22:00 de lunes a sábado, 10 % de los grupos llenos al inicio, 29.755
+estudiantes: 4 o 5 asignaturas en el 70 %, 1-3 en el 7 %, 6-7 en el 18 % y 8 en el 4,5 %. El generador
+imprime el cumplimiento del supuesto S5 (69 % de los estudiantes comparten 4 o más materias con su
+cohorte, sobre el 60 % exigido) y los porcentajes reales.
+
+**Cómo se mide cada escenario**
+
+| Qué | Cómo |
+|---|---|
+| E2 (p99 <= 200 ms) | `http_req_duration{phase:hold}` de k6, medido en la meseta, con umbral `p(99)<200` y errores `< 0,1 %` (el 422 por créditos es una respuesta válida y no cuenta como error) |
+| `complete=false` (ADR 0009) | Cada respuesta se examina (`"complete":false`): métrica `incomplete` de k6. Se contrasta con `sched_search_incomplete_total` / `sched_search_duration_seconds_count` del motor, que se leen de `/actuator/prometheus` (puerto 8081, red interna) con `docker exec <réplica> curl localhost:8081/actuator/prometheus` |
+| E1, % de combinaciones con un grupo lleno (< 2 %) | La ráfaga vacía el grupo `i` de `drain.txt` en `inicio + i / tasa`; k6 conoce esa fórmula y revisa 1 de cada 3 respuestas de `/combinations`: cuenta las combinaciones que incluyen un grupo ya vaciado (`schedule_full`) y cuánto hacía que se había vaciado (`full_group_age_ms`, E1: <= 5 s) |
+| E1, retraso del canal | La ráfaga imprime la latencia de confirmación de cada evento (`ack_p50_ms`, `ack_p99_ms`) |
+
+**Peor caso 7x8 (`MODE=worst`).** Solo solicitudes de `worst.json`: 7 asignaturas de las de 8 grupos, con
+ventanas `avoid` de jornada. Con `avoid` la búsqueda es exacta (recorre todo el árbol), así que es el caso que
+puede agotar `SCHED_SEARCH_TIMEOUT_MS`. Sin ráfaga ni `/alternatives`; tasas más bajas (50, 100 y 200 por
+segundo). Con `SEARCH_TIMEOUT_MS=0` se mide la misma carga sin límite, como referencia.
+
+Resultado resumido (2026-11-22): una réplica de 2 CPUs sostiene ~5.000 solicitudes/s con p99 de 3 ms, tres réplicas 8.000/s con p99 de 15 ms (más allá limitan k6 y Traefik de esta máquina); E1 y E2 se cumplen y no hubo respuestas cortadas por el tiempo (0 %), ni en el peor caso 7x8.
+
+Los datos crudos (`bench/results/pico_*`, `worst_*`) están en `.gitignore`: solo se versionan los resúmenes,
+en [`results/report-pico.md`](results/report-pico.md).
+
 ## Cómo se garantizan condiciones controladas
 
 | Condición | Cómo se controla |

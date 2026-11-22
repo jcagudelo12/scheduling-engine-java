@@ -179,11 +179,19 @@ pruebas, C puede agregarse como un segundo límite sin cambiar la API (`search` 
 - **Paga:** la misma consulta puede dar respuestas distintas, con `complete` distinto, según la
   carga de la máquina. El portal debe leer `complete` y avisar al estudiante cuando es `false`
   ("podría haber mejores combinaciones", S6).
-- **Pendiente de medir:** el porcentaje de respuestas cortadas y la distancia de su puntaje al
-  top 5 exacto con perfiles 7 × 8 reales (el 99 % de E2), y el efecto sobre la p99 de las demás
+- **Pendiente de medir:** la distancia del puntaje de las respuestas cortadas al top 5 exacto con perfiles
+  7 × 8 reales (el porcentaje de cortes ya se midió, ver abajo) y el efecto sobre la p99 de las demás
   solicitudes. El límite de 150 ms es un valor inicial: se ajusta con esas mediciones.
   El motor ya cuenta las búsquedas cortadas (`sched_search_incomplete_total`, ver
   [arquitectura.md](../arquitectura.md#observabilidad)); falta recogerlas en un pico real.
+- **Medido (2026-11-22, [report-pico.md](../../bench/results/report-pico.md)):** en un pico simulado de
+  hasta 8.000 solicitudes/s (mezcla con `avoid` y `/alternatives`, catálogo estilo ITM) y en
+  perfiles peor caso 7 x 8 con `avoid` (incluido uno sintético con 14 sesiones en 14 celdas), **0 % de
+  las respuestas se cortaron por el tiempo** (`complete=false` en k6 y `sched_search_incomplete_total`
+  coinciden), con una búsqueda de 7 x 8 de 1-2 ms y p99 de 4-13 ms a 10-200 solicitudes/s. El 99 % de
+  respuestas exactas de E2 se cumple con 100 % en esos datos; no hubo cortes, así que no se pudo medir la
+  distancia al top 5 exacto. El tiempo máximo funciona como red de seguridad que no se activa con perfiles
+  reales; el valor de 150 ms se mantiene.
 - **No resuelve** la cota de entrada: el tiempo máximo acota cada solicitud, no su cantidad. El
   tope de cursos y de tamaño de la solicitud se trata aparte (validación de entrada).
 - Las respuestas incompletas no se guardan ni se reutilizan: cada solicitud calcula la suya.
