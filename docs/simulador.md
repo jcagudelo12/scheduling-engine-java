@@ -172,9 +172,19 @@ historial en memoria. El núcleo evaluado es el que se despliega.
   uno (otro estudiante lo tomó mientras tanto), pide alternativas con su selección y **sigue con
   la primera**: retira los grupos inscritos que esa alternativa cambia (antes de inscribir los
   nuevos, para no cruzarse consigo mismo) y envía lo que falta.
-  - Si el motor no da combinaciones (o alternativas) con todas las asignaturas, el estudiante
-    **quita la de menor prioridad (la última)** y vuelve a pedir; la quitada cuenta como no
-    matriculada. La prioridad es el orden de la lista de asignaturas del perfil.
+  - Al pedir alternativas informa al motor qué grupos ya tiene inscritos (`enrolled`), para que
+    no trate como sin cupo uno cuyo último cupo tomó él mismo. `GenerateCombinations` no necesita
+    algo análogo: solo se llama antes de inscribir nada; desde que hay grupos inscritos se usan
+    alternativas.
+  - **Regla de abandono** cuando el motor no da combinaciones (o alternativas) con todas las
+    asignaturas. Es equivalente a la de A, que solo aplaza lo realmente imposible, para que B no
+    gane tiempo matriculando menos: (1) se quitan las asignaturas sin ningún grupo con cupo en la
+    plataforma (las ya inscritas no cuentan); (2) si aún no hay combinación, se quita la
+    asignatura cuya eliminación permite una (se prueba con el motor, de la última a la primera),
+    prefiriendo la de menor prioridad (la última de la lista del perfil) entre las que lo logran;
+    (3) si ninguna sola basta, se quita la última; y se repite. Esas consultas cuentan en
+    `engine_calls` y en el tiempo; las quitadas cuentan como no matriculadas (y se retiran si ya
+    estaban inscritas).
   - `maxAlternativeRounds` acota las alternativas adoptadas por estudiante.
 
 ### Plataforma simulada
@@ -313,7 +323,10 @@ En `--out`:
 - **`metadata.json`**: semilla, parámetros efectivos, resumen de la oferta, versión (`git
   describe`, o `desconocida`), fecha, versión de Java y los flujos de aleatoriedad.
 
-Además imprime las medias por condición y la comparación con la consulta.
+Además imprime las medias por condición (incluida `courses_enrolled`) y la comparación con la
+consulta. **Amenaza a la validez:** si la media de asignaturas matriculadas difiere entre A y B en
+más de 0,1, la salida lo avisa y el análisis de Ttotal debe mostrarlo (un resultado más rápido no
+debe pagarse con menos materias). `metadata.json` guarda las medias (`coursesEnrolledMean`).
 
 **Verificación de corrección.** En B, cada combinación y cada alternativa que entrega el motor se
 comprueba contra la plataforma (sin cruces y cubriendo las asignaturas pedidas); si alguna fallara,
@@ -333,8 +346,5 @@ perfiles, las llegadas y los conteos, y `t_total_s` varía por el reloj de la m�
 
 ### Limitaciones conocidas
 
-- El motor no sabe qué cupos tomó el propio estudiante: si este toma el último cupo de un grupo,
-  al pedir alternativas la réplica lo ve lleno y propone cambiarlo. Es el comportamiento real del
-  contrato y se refleja en los retiros (`withdrawals`) de B.
 - No hay análisis estadístico ni búsqueda automática de parámetros: vienen después. Los valores por
   defecto no están calibrados y el flujo A aún no reproduce A9, A11 ni A13.

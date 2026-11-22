@@ -19,6 +19,9 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ExperimentCli {
 
+    /** Diferencia máxima tolerada, sin aviso, entre A y B en asignaturas matriculadas por estudiante. */
+    static final double ENROLLED_GAP_WARNING = 0.1;
+
     private ExperimentCli() {
     }
 
@@ -69,20 +72,32 @@ public final class ExperimentCli {
 
     static String summary(Experiment.Result result) {
         StringBuilder out = new StringBuilder();
-        out.append(String.format(Locale.ROOT, "%-3s %12s %10s %10s %10s %12s%n", "", "Ttotal (s)", "Rtraslape", "Rcupo", "Rtotal", "engine (ms)"));
+        out.append(String.format(Locale.ROOT, "%-3s %12s %10s %10s %10s %12s %12s%n", "", "Ttotal (s)", "Rtraslape", "Rcupo", "Rtotal", "engine (ms)", "matriculadas"));
         for (List<StudentResult> rows : List.of(result.reactive(), result.assisted())) {
             if (rows.isEmpty()) {
                 continue;
             }
-            out.append(String.format(Locale.ROOT, "%-3s %12.1f %10.2f %10.2f %10.2f %12.2f%n",
+            out.append(String.format(Locale.ROOT, "%-3s %12.1f %10.2f %10.2f %10.2f %12.2f %12.2f%n",
                     rows.getFirst().condition().code(),
                     mean(rows, StudentResult::tTotalSeconds),
                     mean(rows, r -> r.rTraslape()),
                     mean(rows, r -> r.rCupo()),
                     mean(rows, r -> r.rTotal()),
-                    mean(rows, r -> r.engineNanos() / 1e6)));
+                    mean(rows, r -> r.engineNanos() / 1e6),
+                    mean(rows, r -> r.coursesEnrolled())));
+        }
+        double gap = enrolledGap(result);
+        if (Math.abs(gap) > ENROLLED_GAP_WARNING) {
+            out.append(String.format(Locale.ROOT,
+                    "AVISO: la media de asignaturas matriculadas difiere entre A y B en %.2f (B - A), más de %.1f: "
+                            + "amenaza a la validez, el análisis de Ttotal debe mostrarla.%n", gap, ENROLLED_GAP_WARNING));
         }
         return out.toString();
+    }
+
+    /** Diferencia B - A de la media de asignaturas matriculadas (un resultado más completo no debe pagarse con menos materias). */
+    static double enrolledGap(Experiment.Result result) {
+        return mean(result.assisted(), r -> r.coursesEnrolled()) - mean(result.reactive(), r -> r.coursesEnrolled());
     }
 
     static double mean(List<StudentResult> rows, java.util.function.ToDoubleFunction<StudentResult> f) {
@@ -105,6 +120,11 @@ public final class ExperimentCli {
         offer.put("seats", result.setup().offer().totalSeats());
         offer.put("maxCredits", result.setup().offer().rules().maxCredits());
         meta.put("offer", offer);
+        Map<String, Object> enrolled = new LinkedHashMap<>();
+        enrolled.put("A", mean(result.reactive(), r -> r.coursesEnrolled()));
+        enrolled.put("B", mean(result.assisted(), r -> r.coursesEnrolled()));
+        enrolled.put("gapBMinusA", enrolledGap(result));
+        meta.put("coursesEnrolledMean", enrolled);
         meta.put("config", config);
         JsonMapper mapper = JsonMapper.builder().enable(SerializationFeature.INDENT_OUTPUT).build();
         Files.writeString(path, mapper.writeValueAsString(meta) + "\n");

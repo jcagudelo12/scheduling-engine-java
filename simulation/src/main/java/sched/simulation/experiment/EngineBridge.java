@@ -1,6 +1,7 @@
 package sched.simulation.experiment;
 
 import java.util.Map;
+import java.util.Set;
 import sched.adapters.inmemory.InMemoryCatalogLog;
 import sched.application.Alternatives;
 import sched.application.AppException;
@@ -87,11 +88,12 @@ final class EngineBridge {
         return new Answer<>(result, measured ? elapsed : 0);
     }
 
-    Answer<Alternatives> alternatives(StudentContext student, Map<CourseId, SectionId> selection) {
+    Answer<Alternatives> alternatives(
+            StudentContext student, Map<CourseId, SectionId> selection, Set<SectionId> enrolled) {
         long started = System.nanoTime();
         Alternatives result;
         try {
-            result = suggest.execute(student, selection);
+            result = suggest.execute(student, selection, enrolled);
         } catch (AppException e) {
             throw new IllegalStateException("el motor falló al sugerir alternativas: " + e.getMessage(), e);
         }

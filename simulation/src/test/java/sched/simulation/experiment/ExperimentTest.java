@@ -184,6 +184,77 @@ class ExperimentTest {
         assertEquals(1, results.get(1).coursesEnrolled());
     }
 
+    // --- Regla de abandono de B ----------------------------------------------------------------
+
+    private static Section sec(String id, String course, Weekday day, int capacity) {
+        return new Section(new SectionId(id), new CourseId(course),
+                List.of(TimeSlot.of(day, 360, 480).orElseThrow()), capacity);
+    }
+
+    private static Profile threeCourses() {
+        return new Profile(0, "U1", "SISTEMAS", 1, 3, 1, Shift.MANANA,
+                List.of(new CourseId("C1"), new CourseId("C2"), new CourseId("C3")), 0);
+    }
+
+    @Test
+    void assistedDropsTheImpossibleCourseNotTheLastOne() {
+        // C2 no tiene ningún cupo; C3, la última, es compatible con todo: se quita C2.
+        Section c1 = sec("C1-01", "C1", Weekday.MONDAY, 5);
+        Section c2 = sec("C2-01", "C2", Weekday.TUESDAY, 5);
+        Section c3 = sec("C3-01", "C3", Weekday.WEDNESDAY, 5);
+        Offer offer = new Offer(List.of(new SectionSeats(c1, 5), new SectionSeats(c2, 0), new SectionSeats(c3, 5)),
+                List.of(new Course(new CourseId("C1"), 3), new Course(new CourseId("C2"), 3),
+                        new Course(new CourseId("C3"), 3)), new EnrollmentRules(20));
+
+        StudentResult r = Experiment.runCondition(handBuilt(), offer, List.of(threeCourses()), Condition.ASSISTED)
+                .getFirst();
+
+        assertEquals(2, r.coursesEnrolled());
+        assertEquals(1, r.coursesDeferred());
+        assertEquals(0, r.rTraslape());
+    }
+
+    @Test
+    void assistedDropsTheCourseThatMakesTheCombinationPossible() {
+        // C1 y C2 solo tienen un grupo y se cruzan; C3, la última, es compatible: quitarla no
+        // ayuda, así que se quita la de menor prioridad que sí lo logra (C2) y C3 se conserva.
+        Section c1 = sec("C1-01", "C1", Weekday.MONDAY, 5);
+        Section c2 = sec("C2-01", "C2", Weekday.MONDAY, 5);
+        Section c3 = sec("C3-01", "C3", Weekday.WEDNESDAY, 5);
+        Offer offer = new Offer(List.of(new SectionSeats(c1, 5), new SectionSeats(c2, 5), new SectionSeats(c3, 5)),
+                List.of(new Course(new CourseId("C1"), 3), new Course(new CourseId("C2"), 3),
+                        new Course(new CourseId("C3"), 3)), new EnrollmentRules(20));
+
+        StudentResult r = Experiment.runCondition(handBuilt(), offer, List.of(threeCourses()), Condition.ASSISTED)
+                .getFirst();
+
+        assertEquals(2, r.coursesEnrolled());
+        assertEquals(1, r.coursesDeferred());
+        // Combinaciones con todo (vacía), con C3 menos (vacía) y con C2 menos (hay).
+        assertEquals(3, r.engineCalls());
+    }
+
+    @Test
+    void ownLastSeatDoesNotMakeTheEngineChangeTheGroup() {
+        // El estudiante toma el último cupo de C1-01; otro estudiante hace fallar a U1 en C2-01 y U1
+        // pide alternativas: C1-01 (inscrito, 0 cupos en la réplica) debe conservarse.
+        Section c1 = sec("C1-01", "C1", Weekday.MONDAY, 1);
+        Section c2a = sec("C2-01", "C2", Weekday.TUESDAY, 1);
+        Section c2b = sec("C2-02", "C2", Weekday.THURSDAY, 5);
+        Offer offer = new Offer(List.of(new SectionSeats(c1, 1), new SectionSeats(c2a, 1), new SectionSeats(c2b, 5)),
+                List.of(new Course(new CourseId("C1"), 3), new Course(new CourseId("C2"), 3)),
+                new EnrollmentRules(20));
+        Profile u1 = new Profile(0, "U1", "SISTEMAS", 1, 2, 1, Shift.MANANA,
+                List.of(new CourseId("C1"), new CourseId("C2")), 0);
+        Profile u2 = new Profile(1, "U2", "SISTEMAS", 1, 1, 1, Shift.MANANA, List.of(new CourseId("C2")), 0);
+
+        List<StudentResult> results = Experiment.runCondition(handBuilt(), offer, List.of(u1, u2), Condition.ASSISTED);
+
+        assertEquals(1, results.get(0).rCupo());
+        assertEquals(2, results.get(0).coursesEnrolled());
+        assertEquals(0, results.get(0).withdrawals());
+    }
+
     // --- Configuración, CSV y calibración -------------------------------------------------------
 
     @Test

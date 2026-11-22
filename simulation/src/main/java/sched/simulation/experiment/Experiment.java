@@ -91,7 +91,7 @@ public final class Experiment {
             Tally tally = new Tally();
             tallies.add(tally);
             Runnable start = assisted
-                    ? new AssistedStudent(profile, platform, engine, queue, config, tally)::start
+                    ? new AssistedStudent(profile, sections, platform, engine, queue, config, tally)::start
                     : new ReactiveStudent(profile, sections, platform, queue, config, tally)::start;
             queue.at(profile.arrivalSeconds(), start);
         }
