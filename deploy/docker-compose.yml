@@ -1,21 +1,35 @@
-# Despliegue local con varias instancias (ADR 0005):
+# Despliegue local con varias instancias (ADR 0005) y seguridad activada:
 #
+#   deploy/setup-dev.sh                                                  # una vez: certificados, llaves, deploy/.env
 #   docker compose -f deploy/docker-compose.yml up -d --build
 #   docker compose -f deploy/docker-compose.yml up -d --scale engine=5   # más réplicas
 #
-# - nats:   JetStream con el historial compartido del catálogo (persistente).
-# - ingest: única instancia que recibe datos de la institución (gRPC :50051).
-# - engine: instancias de consulta, escalables; no exponen puertos al host.
-# - lb:     Traefik en :8080, reparte HTTP/WebSocket entre las instancias de consulta.
-#           Descubre las réplicas solo y únicamente envía tráfico a las "healthy"
-#           (su /ready responde 200). Panel de control en http://localhost:8090.
+# - nats:   JetStream con el historial compartido del catálogo (persistente). Con usuario y
+#           contraseña, TLS y permisos mínimos (deploy/nats/nats.conf). No publica puertos:
+#           solo lo alcanzan los servicios de esta red. Para depurar desde el host, agregue
+#           "127.0.0.1:4222:4222" (solo en esa interfaz) y use un cliente con la CA y la contraseña.
+# - ingest: única instancia que recibe datos de la institución (gRPC :50051). Exige TLS con
+#           autenticación mutua: solo conecta un cliente con certificado firmado por la CA.
+# - engine: instancias de consulta, escalables; no exponen puertos al host. Exigen un token
+#           firmado (Authorization: Bearer) salvo en /health y /ready.
+# - lb:     Traefik en :8080, reparte HTTP entre las instancias de consulta y solo envía tráfico a
+#           las "healthy" (su /ready responde 200). Limita solicitudes por IP, solicitudes
+#           simultáneas y tamaño del cuerpo. Sin panel ni API expuestos.
+#
+# Los secretos (deploy/.env, deploy/certs/, deploy/keys/) los genera deploy/setup-dev.sh y no se
+# versionan. El HTTP de los estudiantes va sin TLS en este despliegue: en producción el TLS se
+# termina en el ingress de la institución (o en Traefik con su propio certificado).
 
 name: sched-engine
 
 x-engine: &engine
   image: sched-engine-java:dev
   environment: &engine-env
-    SCHED_NATS_URL: nats://nats:4222
+    # TLS hacia NATS: se confía solo en la CA de desarrollo.
+    SCHED_NATS_URL: tls://nats:4222
+    SCHED_NATS_USER: engine
+    SCHED_NATS_PASSWORD: ${NATS_ENGINE_PASSWORD:?falta deploy/.env (ejecute deploy/setup-dev.sh)}
+    SCHED_NATS_TLS_CA: /certs/ca.crt
   depends_on:
     - nats
   restart: unless-stopped
@@ -23,11 +37,12 @@ x-engine: &engine
 services:
   nats:
     image: nats:2
-    command: ["-js", "-sd", "/data", "-m", "8222"]
-    ports:
-      - "4222:4222"
-      - "8222:8222"
+    command: ["-c", "/etc/nats/nats.conf"]
+    environment:
+      NATS_ENGINE_PASSWORD: ${NATS_ENGINE_PASSWORD:?falta deploy/.env (ejecute deploy/setup-dev.sh)}
     volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf:ro
+      - ./certs/nats:/certs:ro
       - nats-data:/data
     restart: unless-stopped
 
@@ -39,6 +54,13 @@ services:
     environment:
       <<: *engine-env
       SCHED_ROLE: ingest
+      SCHED_GRPC_TLS: required
+      SCHED_GRPC_TLS_CERT: /certs/server.crt
+      SCHED_GRPC_TLS_KEY: /certs/server.key
+      # CA que firma los certificados de cliente de la institución.
+      SCHED_GRPC_TLS_CLIENT_CA: /certs/ca.crt
+    volumes:
+      - ./certs/ingest:/certs:ro
     ports:
       - "50051:50051"
 
@@ -48,13 +70,35 @@ services:
     environment:
       <<: *engine-env
       SCHED_ROLE: query
+      SCHED_AUTH: jwt
+      SCHED_JWT_PUBLIC_KEYS: /keys
+      SCHED_JWT_ISSUER: ${SCHED_JWT_ISSUER:-institucion-dev}
+      SCHED_JWT_AUDIENCE: ${SCHED_JWT_AUDIENCE:-sched-engine}
+      SCHED_MAX_BODY_BYTES: ${MAX_BODY_BYTES:-65536}
+    volumes:
+      - ./certs/engine:/certs:ro
+      # Solo las llaves públicas; la privada no sale de deploy/keys/private.
+      - ./keys/public:/keys:ro
     deploy:
       replicas: 3
     labels:
       traefik.enable: "true"
       traefik.http.routers.engine.rule: PathPrefix(`/`)
       traefik.http.routers.engine.entrypoints: web
+      traefik.http.routers.engine.middlewares: engine-inflight,engine-ratelimit,engine-bodylimit
       traefik.http.services.engine.loadbalancer.server.port: "8080"
+      # Solicitudes simultáneas por IP de origen.
+      traefik.http.middlewares.engine-inflight.inflightreq.amount: ${INFLIGHT_MAX:-100}
+      traefik.http.middlewares.engine-inflight.inflightreq.sourcecriterion.ipstrategy.depth: "0"
+      # Solicitudes por segundo por IP: promedio sostenido y ráfaga. Detrás de otro proxy,
+      # ajuste ipstrategy.depth (o excludedips) para limitar por la IP real del cliente.
+      traefik.http.middlewares.engine-ratelimit.ratelimit.average: ${RATE_LIMIT_AVERAGE:-50}
+      traefik.http.middlewares.engine-ratelimit.ratelimit.period: 1s
+      traefik.http.middlewares.engine-ratelimit.ratelimit.burst: ${RATE_LIMIT_BURST:-100}
+      traefik.http.middlewares.engine-ratelimit.ratelimit.sourcecriterion.ipstrategy.depth: "0"
+      # Tamaño máximo del cuerpo: más allá, Traefik responde 413 sin llegar al motor.
+      traefik.http.middlewares.engine-bodylimit.buffering.maxrequestbodybytes: ${MAX_BODY_BYTES:-65536}
+      traefik.http.middlewares.engine-bodylimit.buffering.memrequestbodybytes: ${MAX_BODY_BYTES:-65536}
 
   lb:
     image: traefik:v3
@@ -63,19 +107,23 @@ services:
       # Solo los contenedores con traefik.enable=true (no la ingesta ni NATS).
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
-      # Panel y API en :8090; solo para desarrollo.
-      - --api.insecure=true
-      - --entrypoints.traefik.address=:8090
+      # Lecturas lentas (slowloris): se corta la solicitud que tarda más de 10 s en llegar.
+      - --entrypoints.web.transport.respondingtimeouts.readtimeout=10s
+      # Sin panel ni API de Traefik (no hay --api.insecure ni entrypoint de panel).
+      - --api=false
+      - --global.sendanonymoususage=false
     ports:
       - "8080:80"
-      - "8090:8090"
     volumes:
+      # El socket da acceso a la API de Docker: en producción use un proxy de solo lectura del
+      # socket o el orquestador (Kubernetes) en lugar de montarlo.
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
   # Institución simulada (solo para desarrollo). No arranca con "up": se usa a demanda con
   #   docker compose -f deploy/docker-compose.yml run --rm simulator load
   #   docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01 0
+  # Presenta su certificado de cliente (deploy/certs/client) a la ingesta.
   # Los escenarios de simulation/fixtures/ se montan; uno nuevo se usa sin reconstruir.
   simulator:
     image: sched-simulator-java:dev
@@ -85,8 +133,12 @@ services:
     profiles: [tools]
     environment:
       SCHED_INGEST_URL: ingest:50051
+      SCHED_INGEST_TLS_CERT: /certs/client.crt
+      SCHED_INGEST_TLS_KEY: /certs/client.key
+      SCHED_INGEST_TLS_CA: /certs/ca.crt
     volumes:
       - ../simulation/fixtures:/app/simulation/fixtures:ro
+      - ./certs/client:/certs:ro
     depends_on:
       - ingest
 

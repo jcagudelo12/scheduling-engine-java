@@ -32,7 +32,7 @@ En Windows usa `mvnw.cmd`.
 El motor siempre necesita NATS, incluso con `SCHED_ROLE=all`. Levántalo:
 
 ```sh
-docker run -d --rm --name sched-nats -p 4222:4222 nats:2 -js
+docker run -d --rm --name sched-nats -p 127.0.0.1:4222:4222 nats:2 -js
 ```
 
 Si NATS está en otra dirección, indícala con `SCHED_NATS_URL`. El `-js` es obligatorio: sin
@@ -73,6 +73,35 @@ docker compose -f deploy/docker-compose.yml run --rm simulator load
 ```
 
 `/ready` responde `503` mientras no haya catálogo: ver [api-http.md](api-http.md#sondas).
+
+### El simulador dice `error: la ingesta exige TLS con autenticación mutua`
+
+La ingesta exige mTLS por defecto. Pasa `--tls-cert`, `--tls-key` y `--tls-ca` (o sus variables
+`SCHED_INGEST_TLS_*`); con `deploy/setup-dev.sh` ya están en `deploy/certs/client`. Contra un
+motor con `SCHED_GRPC_TLS=disabled` usa `--plaintext`. Ver [simulador.md](simulador.md).
+
+### El simulador dice `error: UNAVAILABLE: ssl exception` o `Network closed for unknown reason`
+
+El handshake TLS falló. Casos típicos: el certificado de cliente no está firmado por la CA que
+configuró el motor (`SCHED_GRPC_TLS_CLIENT_CA`); el simulador no confía en la CA del servidor
+(`--tls-ca`); el nombre de `SCHED_INGEST_URL` no figura en el SAN del certificado del servidor
+(en desarrollo, `ingest` o `localhost`); o conectas sin TLS a una ingesta que lo exige (o al revés).
+Los certificados vencen: regenera con `deploy/setup-dev.sh --force`.
+
+### El motor no arranca: `SCHED_JWT_PUBLIC_KEYS no está configurado` o `SCHED_GRPC_TLS_CERT no está configurado`
+
+Es intencional: con la seguridad por defecto el motor no arranca sin llaves públicas ni
+certificados. Configúralos (ver la [tabla de seguridad](inicio-rapido.md#seguridad)) o, solo en
+desarrollo, usa `SCHED_AUTH=none` y `SCHED_GRPC_TLS=disabled`.
+
+### La API responde `401 {"error":"unauthorized"}`
+
+Falta `Authorization: Bearer <token>`, o el token es inválido. El cuerpo es el mismo para todo
+motivo; el motivo exacto (`firma_invalida`, `vencido`, `emisor_incorrecto`, `kid_desconocido`…)
+queda en el log del motor, con el `kid` y sin el token (`token rechazado: motivo=…`). Revisa que
+`iss` y `aud` coincidan con `SCHED_JWT_ISSUER` y `SCHED_JWT_AUDIENCE`, que el `kid` esté entre las
+llaves del motor, que `exp - iat` no supere `SCHED_JWT_MAX_TTL_S` y que los relojes estén
+sincronizados (tolerancia: `SCHED_JWT_CLOCK_SKEW_S`).
 
 ### El simulador dice `error: UNAVAILABLE: io exception`
 
@@ -122,8 +151,18 @@ unless-stopped`) y se recupera cuando NATS responde.
 
 ### Traefik responde `404` o `Bad Gateway`
 
-Ninguna réplica está `healthy` todavía (ver el punto anterior). En el panel
-<http://localhost:8090> se ven las réplicas que Traefik tiene registradas.
+Ninguna réplica está `healthy` todavía (ver el punto anterior). El panel de Traefik está
+desactivado por seguridad; para ver qué tiene registrado, usa `docker compose … logs lb`.
+
+### Traefik responde `429` o `413`
+
+Es el límite por IP (`RATE_LIMIT_AVERAGE` y `RATE_LIMIT_BURST` en `deploy/.env`), el de solicitudes
+simultáneas (`INFLIGHT_MAX`) o el de cuerpo (`MAX_BODY_BYTES`). Con el despliegue local todas las
+solicitudes llegan desde la misma IP, así que una prueba de carga las alcanza enseguida.
+
+### `docker compose` dice `falta deploy/.env`
+
+Ejecuta `deploy/setup-dev.sh`: genera los certificados, las llaves del token y la contraseña de NATS.
 
 ### Traefik no descubre los contenedores
 

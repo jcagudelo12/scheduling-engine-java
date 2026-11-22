@@ -10,10 +10,65 @@ Cómo entra la información de la universidad al motor. Este contrato lo impleme
   `50051`). El puerto se abre solo cuando la réplica local está al día con el historial.
 - **Sentido:** siempre de la institución hacia el motor. El motor nunca llama a la institución
   ([ADR 0002](adr/0002-roles-de-la-institucion.md)).
-- **Seguridad:** hoy sin TLS ni autenticación (`plaintext`). Pendiente antes de producción.
+- **Seguridad:** TLS con **autenticación mutua** (mTLS) obligatorio por defecto. Ver
+  [Seguridad: qué debe hacer la institución](#seguridad-qué-debe-hacer-la-institución).
 
 > `engine/v1/catalog_log.proto` es un contrato **interno** entre instancias del motor (el
 > historial en NATS). La institución no lo usa.
+
+## Seguridad: qué debe hacer la institución
+
+La ingesta lleva datos de la institución y solo debe aceptar a la institución. Por eso el motor
+exige, por defecto (`SCHED_GRPC_TLS=required`), un canal cifrado con autenticación mutua, y el
+contexto de cada estudiante viaja en un token que solo la institución puede firmar.
+
+### 1. Canal gRPC: TLS con autenticación mutua
+
+- La institución **genera su propia llave privada** y obtiene un **certificado de cliente**
+  (`extendedKeyUsage = clientAuth`) firmado por la CA que se acuerde con quien opera el motor. La
+  llave privada no sale de la institución.
+- Quien opera el motor configura esa CA en `SCHED_GRPC_TLS_CLIENT_CA`: el servidor **rechaza**
+  cualquier cliente sin certificado, o con uno firmado por otra CA.
+- El motor presenta su certificado de servidor (`SCHED_GRPC_TLS_CERT` y `SCHED_GRPC_TLS_KEY`). La
+  institución debe confiar en la CA que lo firmó y conectarse con un nombre que figure en el SAN
+  del certificado (en desarrollo: `ingest` y `localhost`).
+- El SDK debe usar los tres archivos PEM (certificado y llave de cliente, y la CA del servidor)
+  con su cliente gRPC. Llaves en PKCS#8 (`BEGIN PRIVATE KEY`). Renueve los certificados antes de
+  que venzan: un certificado vencido es rechazado.
+- En desarrollo, `deploy/certs/generate.sh` (o `deploy/setup-dev.sh`) genera una CA y los
+  certificados de servidor y de cliente. El simulador los usa con `--tls-cert`, `--tls-key` y
+  `--tls-ca`.
+- `SCHED_GRPC_TLS=disabled` quita el TLS y no autentica a nadie: solo para desarrollo, y el motor
+  lo advierte al arrancar.
+
+Se verifica con la prueba de integración
+[`IngestGrpcMutualTlsTest`](../server/src/test/java/sched/server/IngestGrpcMutualTlsTest.java):
+conecta quien tiene un certificado válido; falla el cliente sin certificado, el de otra CA y el
+que no usa TLS.
+
+### 2. Token del estudiante (API HTTP)
+
+Este contrato gRPC no lleva datos de estudiantes. En la API HTTP, la institución firma un **JWT
+con EdDSA (Ed25519)** cuando carga la vista del estudiante, y el navegador lo envía en
+`Authorization: Bearer`. Lo que debe hacer:
+
+- Generar un par Ed25519 y entregar al operador del motor **solo la llave pública** (PEM
+  `BEGIN PUBLIC KEY`), con un `kid` que la identifique. Para rotar la llave, el operador
+  configura las dos (`SCHED_JWT_PUBLIC_KEYS`), la institución empieza a firmar con la nueva y
+  después se retira la anterior.
+- Firmar tokens con `alg=EdDSA`, `kid`, `iss` (el acordado con el operador, `SCHED_JWT_ISSUER`),
+  `aud` (`SCHED_JWT_AUDIENCE`), `sub` (id del estudiante), `courses` (sus cursos habilitados),
+  `iat` y `exp`, con una vida corta (el motor rechaza más de `SCHED_JWT_MAX_TTL_S`, 15 minutos
+  por defecto).
+- Emitir un token nuevo cuando cambie la situación del estudiante.
+
+Detalle de los claims y de las respuestas `401` en [api-http.md](api-http.md#autenticación).
+
+### 3. Datos personales
+
+El motor no guarda datos personales en disco: el catálogo y los cupos viven en una réplica en
+memoria y en el historial de NATS (que no contiene estudiantes), y el contexto del estudiante
+llega en cada solicitud y no se conserva. Los logs no registran el token ni su contenido.
 
 ## Servicios
 
@@ -156,12 +211,16 @@ La ingesta tiene **gRPC Server Reflection** habilitado, así que las herramienta
 servicios y mensajes sin necesidad de los `.proto`. Los ejemplos usan las imágenes de Docker
 para no tener que instalar nada; `--network host` permite llegar a `localhost:50051`.
 
-Primero levanta el motor ([inicio-rapido.md](inicio-rapido.md), camino B o C).
+Primero levanta el motor ([inicio-rapido.md](inicio-rapido.md), camino B o C). Los ejemplos
+presentan el certificado de cliente de desarrollo (`deploy/certs/client`, generado por
+`deploy/setup-dev.sh`); contra un motor con `SCHED_GRPC_TLS=disabled` (camino C) sustituya esas
+tres opciones por `-plaintext`.
 
 ### grpcui: interfaz web
 
 ```sh
-docker run --rm --network host fullstorydev/grpcui -plaintext -port 8081 localhost:50051
+docker run --rm --network host -v "$PWD/deploy/certs/client:/certs:ro" fullstorydev/grpcui \
+  -cacert /certs/ca.crt -cert /certs/client.crt -key /certs/client.key -port 8081 localhost:50051
 ```
 
 Abre <http://localhost:8081>. Ahí puedes elegir el servicio y el método, llenar el mensaje en un
@@ -170,7 +229,8 @@ formulario y ver la respuesta, como en Swagger UI.
 ### grpcurl: línea de comandos
 
 ```sh
-G="docker run --rm -i --network host fullstorydev/grpcurl -plaintext"
+G="docker run --rm -i --network host -v $PWD/deploy/certs/client:/certs:ro fullstorydev/grpcurl \
+  -cacert /certs/ca.crt -cert /certs/client.crt -key /certs/client.key"
 
 # Qué servicios hay y cómo son
 $G localhost:50051 list
@@ -202,7 +262,8 @@ representación estándar de protobuf.
 ### Postman
 
 Postman también soporta gRPC: *New → gRPC*, URL `localhost:50051` y, en *Service definition*,
-*Use server reflection*.
+*Use server reflection*. Con mTLS, configure en *Settings → Certificates* la CA y el certificado y
+la llave de cliente para ese host.
 
 ## Generar un cliente en otro lenguaje
 

@@ -15,6 +15,12 @@ simulation/experiments/**/results.csv
 # Salida de JMH ejecutado sin -rff
 jmh-result.*
 
+# Secretos de desarrollo del despliegue (los generan deploy/setup-dev.sh y deploy/certs/generate.sh)
+deploy/certs/*
+!deploy/certs/generate.sh
+deploy/keys/
+deploy/.env
+
 # IDE
 .idea/
 *.iml

@@ -28,6 +28,7 @@ simulador de institución y deja el reporte en `results/report.md` y las gráfic
 | Núcleos fijos | El motor corre en las CPUs `4,6`: dos núcleos físicos cuyos hermanos de hiperhilo (5, 7) quedan libres. NATS en `2,3`, k6 en `8-15`. Ajustable con `ENGINE_CPUS`, `NATS_CPUS` y `K6_CPUS` según el procesador |
 | Memoria | Límite de 1 GB para el motor |
 | CPUs que detecta la JVM | El motor registra al arrancar cuántas CPUs ve (la JVM dimensiona sus hilos con ese número); el script avisa si no coinciden con los núcleos asignados |
+| Sin seguridad, a propósito | El motor de la prueba corre con `SCHED_AUTH=none` y `SCHED_GRPC_TLS=disabled` (`bench/docker-compose.yml`) y la carga del catálogo usa `SCHED_INGEST_TLS=disabled`: los resultados miden el motor sin la verificación del token ni TLS. La verificación de una firma Ed25519 agrega costo por solicitud que esta prueba no incluye |
 | Sin proxy de puertos | k6 entra por la red interna de Docker (de contenedor a contenedor) |
 | Variación | 3 repeticiones; se reporta la **mediana** y el rango del p99 |
 | Colas vacías entre tasas | Pausa de 5 s entre una tasa y la siguiente |

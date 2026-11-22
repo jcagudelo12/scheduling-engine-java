@@ -171,7 +171,10 @@ Decisiones que simplifican:
 ```yaml
 motor:
   url: motor.ejemplo.edu.co:50051
-  # tls: …                          # pendiente (ADR 0007)
+  tls:                              # mTLS obligatorio (docs/contrato-institucion.md)
+    cert: /etc/sdk/cliente.crt
+    key: /etc/sdk/cliente.key       # PKCS#8
+    ca: /etc/sdk/ca-motor.crt
 
 fuente:
   tipo: jdbc

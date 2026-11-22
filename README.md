@@ -11,10 +11,10 @@ Fuera de alcance: asignación de aulas, carga docente y planeación de la oferta
 Con Docker, sin instalar Java:
 
 ```sh
+deploy/setup-dev.sh                                                 # secretos de desarrollo (certificados, llaves, contraseña)
 docker compose -f deploy/docker-compose.yml up -d --build          # NATS, ingesta, 3 consultas, Traefik
-docker compose -f deploy/docker-compose.yml run --rm simulator load # la institución simulada carga el catálogo
-curl -X POST localhost:8080/combinations -H 'content-type: application/json' \
-  -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"]}'
+docker compose -f deploy/docker-compose.yml run --rm simulator load # la institución simulada carga el catálogo (mTLS)
+# token firmado de prueba y consulta (ver docs/inicio-rapido.md)
 ```
 
 Con Java 25: `./mvnw verify` y luego `java -jar simulation/target/sched-simulation.jar simulate`.
@@ -28,7 +28,7 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
 |---|---|
 | [Inicio rápido](docs/inicio-rapido.md) | Correr el motor: en memoria, con Docker o en desarrollo local |
 | [Arquitectura](docs/arquitectura.md) | Cómo encajan las piezas, flujo de datos y por dónde leer el código |
-| [API HTTP](docs/api-http.md) | `POST /combinations`, códigos de error y sondas `/health` y `/ready` |
+| [API HTTP](docs/api-http.md) | Autenticación con token, `POST /combinations`, códigos de error y sondas `/health` y `/ready` |
 | [Contrato con la institución](docs/contrato-institucion.md) | Protocolo gRPC de carga y cambios, y cómo probarlo con grpcurl o grpcui |
 | [Simulador](docs/simulador.md) | Simulador de escenarios, institución simulada y formato de los escenarios |
 | [SDK de integración](docs/sdk.md) | Diseño propuesto del agente que conecta cada universidad con el motor |
@@ -48,9 +48,28 @@ La guía completa, con los tres caminos para correrlo y la configuración, está
   ([ADR 0003](docs/adr/0003-replica-del-catalogo.md)).
 - **Varias instancias:** una instancia de ingesta escribe en un historial de NATS JetStream y
   todas lo leen para armar su réplica ([ADR 0005](docs/adr/0005-varias-instancias-con-historial-compartido.md)).
-- **Contexto del estudiante:** llegará en cada solicitud dentro de un token firmado por la
-  institución ([ADR 0004](docs/adr/0004-contexto-del-estudiante-en-token-firmado.md);
-  pendiente: hoy el endpoint HTTP lo recibe sin firmar).
+- **Contexto del estudiante:** llega en cada solicitud dentro de un token firmado por la
+  institución (JWT EdDSA, [ADR 0004](docs/adr/0004-contexto-del-estudiante-en-token-firmado.md)).
+
+## Seguridad
+
+El motor corre en la infraestructura de la institución y los valores por defecto son los seguros
+(detalle en [arquitectura](docs/arquitectura.md#seguridad)):
+
+- **Ingesta gRPC con mTLS:** exige TLS con autenticación mutua (`SCHED_GRPC_TLS=required`); sin
+  certificado de servidor, llave y CA de clientes no arranca.
+- **API HTTP con token firmado:** `Authorization: Bearer` con un JWT EdDSA (Ed25519) emitido por
+  la institución, con vida corta; de él salen el estudiante y sus cursos habilitados
+  (`SCHED_AUTH=jwt`). Sin token válido, `401`. `/health` y `/ready` quedan abiertos.
+- **NATS con credenciales y TLS**, y permisos limitados al historial del catálogo; sin puertos
+  publicados en el despliegue de desarrollo.
+- **Traefik sin panel**, con límites por IP, de solicitudes simultáneas y de tamaño del cuerpo.
+- **Sin datos personales en el motor:** no hay base de datos y los logs nunca incluyen el token.
+- **Secretos fuera del repositorio:** `deploy/setup-dev.sh` genera los de desarrollo (ignorados
+  por git). `SCHED_AUTH=none` y `SCHED_GRPC_TLS=disabled` existen solo para desarrollo y pruebas y
+  el motor los advierte al arrancar.
+
+Qué debe hacer la institución: [contrato](docs/contrato-institucion.md#seguridad-qué-debe-hacer-la-institución).
 
 ## Estructura
 
@@ -99,7 +118,7 @@ repo conserva los commits originales de la carpeta `java/`.
 
 ## Pendiente
 
-- Token firmado con el contexto del estudiante ([ADR 0004](docs/adr/0004-contexto-del-estudiante-en-token-firmado.md)).
+- Verificar el mismo token al abrir el WebSocket de avisos en vivo (cuando exista).
 - Las 5 mejores combinaciones con ramificación y poda y los filtros del estudiante
   ([ADR 0006](docs/adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md)).
 - Avisos de cupo en vivo por WebSocket.

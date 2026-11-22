@@ -1,9 +1,13 @@
 package sched.simulation;
 
+import io.grpc.ChannelCredentials;
 import io.grpc.Grpc;
 import io.grpc.InsecureChannelCredentials;
 import io.grpc.ManagedChannel;
+import io.grpc.TlsChannelCredentials;
 import io.grpc.stub.StreamObserver;
+import java.io.IOException;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -30,9 +34,27 @@ public final class FakeInstitution implements AutoCloseable {
 
     private final ManagedChannel channel;
 
-    /** {@code target}: dirección de la ingesta, con o sin {@code http://} (ej. localhost:50051). */
+    /** Sin TLS: solo para un motor con {@code SCHED_GRPC_TLS=disabled}. */
     public FakeInstitution(String target) {
-        this.channel = Grpc.newChannelBuilder(target.replaceFirst("^https?://", ""), InsecureChannelCredentials.create())
+        this(target, InsecureChannelCredentials.create());
+    }
+
+    /**
+     * {@code target}: dirección de la ingesta, con o sin {@code http://} (ej. localhost:50051).
+     * {@code credentials}: ver {@link #mutualTls}.
+     */
+    public FakeInstitution(String target, ChannelCredentials credentials) {
+        this.channel = Grpc.newChannelBuilder(target.replaceFirst("^https?://", ""), credentials).build();
+    }
+
+    /**
+     * TLS con autenticación mutua, como lo exige la ingesta: el certificado y la llave (PKCS#8) de
+     * la institución, y la CA que firmó el certificado del servidor.
+     */
+    public static ChannelCredentials mutualTls(Path clientCert, Path clientKey, Path serverCa) throws IOException {
+        return TlsChannelCredentials.newBuilder()
+                .keyManager(clientCert.toFile(), clientKey.toFile())
+                .trustManager(serverCa.toFile())
                 .build();
     }
 

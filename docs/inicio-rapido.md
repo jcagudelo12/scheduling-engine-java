@@ -49,24 +49,49 @@ Para crear otros, ver [simulador.md](simulador.md).
 ## B. Sistema completo con Docker
 
 Levanta lo mismo que en un despliegue real (ver [arquitectura.md](arquitectura.md)): NATS, una
-instancia de ingesta, tres instancias de consulta y Traefik como balanceador. No necesitas Java
-instalado: el simulador de institución también corre en un contenedor.
+instancia de ingesta, tres instancias de consulta y Traefik como balanceador, **con la seguridad
+activada** ([Seguridad](arquitectura.md#seguridad)): TLS con autenticación mutua en la ingesta,
+NATS con usuario y TLS, y token firmado en la API HTTP. Los secretos de desarrollo se generan con
+un script y no se versionan. Hace falta `openssl` para el script; el simulador de institución
+corre en un contenedor.
 
 ```sh
-# 1. Construir y levantar (la primera vez tarda unos minutos)
+# 1. Generar los secretos de desarrollo: certificados (deploy/certs), llaves del token
+#    (deploy/keys) y la contraseña de NATS (deploy/.env). Una sola vez.
+deploy/setup-dev.sh
+
+# 2. Construir y levantar (la primera vez tarda unos minutos)
 docker compose -f deploy/docker-compose.yml up -d --build
 
-# 2. Esperar a que todo esté "healthy"
+# 3. Esperar a que todo esté "healthy"
 docker compose -f deploy/docker-compose.yml ps
 
-# 3. Cargar el catálogo de ejemplo, como lo haría la institución
+# 4. Cargar el catálogo de ejemplo, como lo haría la institución (con su certificado de cliente)
 docker compose -f deploy/docker-compose.yml run --rm simulator load
 #   catálogo cargado: seq=1 grupos=7
 
-# 4. Pedir combinaciones como lo haría el navegador del estudiante
-curl -X POST localhost:8080/combinations -H 'content-type: application/json' \
-  -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"]}'
+# 5. Firmar un token de prueba, como lo haría el backend de la institución al cargar la vista
+#    del estudiante (necesita el jar del simulador: ./mvnw -q -pl simulation -am package -DskipTests)
+TOKEN=$(java -jar simulation/target/sched-simulation.jar token \
+  --key deploy/keys/private/dev-1.key --kid dev-1 --student est-001 --courses MAT101,FIS101 \
+  --iss institucion-dev --aud sched-engine)
+
+# 6. Pedir combinaciones como lo haría el navegador del estudiante
+curl -X POST localhost:8080/combinations -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{}'
+
+# Sin token (o con uno inválido o vencido) el motor responde 401:
+curl -i -X POST localhost:8080/combinations -H 'content-type: application/json' \
+  -d '{"student_id":"est-001","eligible_courses":["MAT101"]}'
+#   HTTP/1.1 401 Unauthorized
+#   WWW-Authenticate: Bearer
+#   {"error":"unauthorized"}
 ```
+
+El estudiante (`sub`) y sus cursos habilitados (`courses`) salen del token; el cuerpo lleva solo
+las preferencias (`avoid`), y `selection` y `enrolled` en `/alternatives`. El token también puede
+generarse con cualquier librería JWT con EdDSA ([API HTTP](api-http.md#autenticación)). Vive 10
+minutos por defecto (`--ttl`); cuando vence, genere otro.
 
 La respuesta trae las combinaciones compatibles (aquí se muestra solo la primera de tres):
 
@@ -105,31 +130,38 @@ Los campos se explican en [api-http.md](api-http.md).
 docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01 0
 #   respuesta del motor: ack seq=2
 
-# Ver los servicios gRPC de la ingesta (gracias a reflection, sin los .proto)
-docker run --rm --network host fullstorydev/grpcurl -plaintext localhost:50051 list
+# Ver los servicios gRPC de la ingesta (gracias a reflection, sin los .proto); hay que presentar
+# el certificado de cliente, y un cliente sin él es rechazado
+docker run --rm --network host -v "$PWD/deploy/certs/client:/certs:ro" fullstorydev/grpcurl \
+  -cacert /certs/ca.crt -cert /certs/client.crt -key /certs/client.key localhost:50051 list
 
 # Escalar a 5 réplicas de consulta; Traefik las toma solo cuando están listas
 docker compose -f deploy/docker-compose.yml up -d --scale engine=5
 ```
 
-- Panel de Traefik (réplicas y rutas): <http://localhost:8090>
-- Monitoreo de NATS: <http://localhost:8222>
+- No hay panel de Traefik ni monitoreo de NATS expuestos en el host (el panel está desactivado y
+  NATS solo es alcanzable dentro de la red de Docker). Para depurar NATS, publique
+  `127.0.0.1:4222:4222` en `deploy/docker-compose.yml`, solo en esa interfaz.
+- Traefik limita por IP las solicitudes por segundo (`RATE_LIMIT_AVERAGE`, `RATE_LIMIT_BURST`), las
+  simultáneas (`INFLIGHT_MAX`) y el cuerpo (`MAX_BODY_BYTES`); responde `429` o `413` antes de
+  llegar al motor. Los valores están en `deploy/.env`.
 
 ### Servicios del despliegue
 
 | Servicio | Rol (`SCHED_ROLE`) | Puertos en el host |
 |---|---|---|
-| `nats` | JetStream con el historial del catálogo | `4222`, monitoreo `8222` |
-| `ingest` | `ingest`: recibe los datos de la institución (una sola instancia) | gRPC `50051` |
-| `engine` | `query`: atiende estudiantes; escalable | ninguno, solo red interna |
-| `lb` | Traefik frente a `engine`; solo enruta a réplicas `healthy` | HTTP `8080`, panel `8090` |
-| `simulator` | Institución simulada; solo con `run`, no arranca con `up` | ninguno |
+| `nats` | JetStream con el historial del catálogo; usuario y contraseña, TLS y permisos mínimos | ninguno, solo red interna |
+| `ingest` | `ingest`: recibe los datos de la institución (una sola instancia); solo con mTLS | gRPC `50051` (TLS con certificado de cliente obligatorio) |
+| `engine` | `query`: atiende estudiantes con token firmado; escalable | ninguno, solo red interna |
+| `lb` | Traefik frente a `engine`; solo enruta a réplicas `healthy`; límites por IP y de cuerpo | HTTP `8080` |
+| `simulator` | Institución simulada (con certificado de cliente); solo con `run`, no arranca con `up` | ninguno |
 
 ### Apagar
 
 ```sh
 docker compose -f deploy/docker-compose.yml down      # detiene; NATS conserva el historial
 docker compose -f deploy/docker-compose.yml down -v   # además borra el historial (empezar de cero)
+deploy/setup-dev.sh --force                           # (opcional) regenera certificados, llaves y contraseña
 ```
 
 Si no borras el historial, al volver a levantar el sistema las réplicas recuperan el último
@@ -140,21 +172,40 @@ catálogo cargado sin necesidad de un nuevo `load`.
 El motor corre desde tu máquina en modo `all` (ingesta y consultas en el mismo proceso). Solo
 NATS va en Docker, porque el motor siempre lo necesita para el historial del catálogo.
 
+Este camino es para desarrollar rápido y **desactiva la seguridad** de forma explícita
+(`SCHED_AUTH=none`, `SCHED_GRPC_TLS=disabled`, NATS sin autenticación). El motor lo advierte en
+el log al arrancar. No lo use fuera de su máquina. Para probar con la seguridad activada, use el
+[camino B](#b-sistema-completo-con-docker) o configure las variables de la
+[tabla de seguridad](#seguridad).
+
 ```sh
-# 1. NATS con JetStream
-docker run -d --rm --name sched-nats -p 4222:4222 nats:2 -js
+# 1. NATS con JetStream (sin autenticación; solo en localhost)
+docker run -d --rm --name sched-nats -p 127.0.0.1:4222:4222 nats:2 -js
 
 # 2. Compilar y arrancar el motor (HTTP :8080, gRPC :50051)
 ./mvnw -q package -DskipTests
-java -jar server/target/sched-server.jar
+SCHED_AUTH=none SCHED_GRPC_TLS=disabled java -jar server/target/sched-server.jar
 
 # 3. En otra terminal: cargar el catálogo y consultar
-java -jar simulation/target/sched-simulation.jar load
+java -jar simulation/target/sched-simulation.jar load --plaintext
 curl -X POST localhost:8080/combinations -H 'content-type: application/json' \
   -d '{"student_id":"est-001","eligible_courses":["MAT101","FIS101"]}'
 ```
 
-Antes del paso 3 el motor responde `503` con el mensaje `el catálogo aún no se ha cargado`. Es
+Para probar el token en local, genere un par de llaves, arranque el motor con
+`SCHED_AUTH=jwt` y firme un token:
+
+```sh
+java -jar simulation/target/sched-simulation.jar keygen --out /tmp/sched-keys --kid dev-1
+SCHED_AUTH=jwt SCHED_JWT_PUBLIC_KEYS=/tmp/sched-keys SCHED_JWT_ISSUER=institucion-dev \
+  SCHED_JWT_AUDIENCE=sched-engine SCHED_GRPC_TLS=disabled java -jar server/target/sched-server.jar
+TOKEN=$(java -jar simulation/target/sched-simulation.jar token --key /tmp/sched-keys/dev-1.key \
+  --kid dev-1 --student est-001 --courses MAT101,FIS101 --iss institucion-dev --aud sched-engine)
+curl -X POST localhost:8080/combinations -H "Authorization: Bearer $TOKEN" \
+  -H 'content-type: application/json' -d '{}'
+```
+
+Antes de cargar el catálogo el motor responde `503` con el mensaje `el catálogo aún no se ha cargado`. Es
 lo esperado: todavía no tiene catálogo.
 
 Para detener: `Ctrl+C` en el motor y `docker stop sched-nats`. Como ese contenedor no tiene
@@ -186,7 +237,33 @@ El motor se configura con variables de entorno (ver
 | `SCHED_SOLVER` | `forward-checking` | Algoritmo de búsqueda: `forward-checking` o `backtracking` (línea base) |
 
 El simulador usa `SCHED_INGEST_URL` (por defecto `localhost:50051`) para saber dónde está la
-ingesta.
+ingesta. Como la ingesta exige mTLS, también necesita el certificado de cliente: `--tls-cert`,
+`--tls-key` y `--tls-ca` (o `SCHED_INGEST_TLS_CERT`, `SCHED_INGEST_TLS_KEY` y `SCHED_INGEST_TLS_CA`),
+o `--plaintext` (`SCHED_INGEST_TLS=disabled`) contra un motor con `SCHED_GRPC_TLS=disabled`. Ver
+[simulador.md](simulador.md).
+
+### Seguridad
+
+Todas las variables son del motor y se leen en el arranque. **Los secretos nunca se registran en
+el log.**
+
+| Variable | Por defecto | Qué hace |
+|---|---|---|
+| `SCHED_AUTH` | `jwt` | `jwt`: exige un token firmado por la institución ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)). `none`: sin autenticación, **solo desarrollo** (advierte al arrancar). Otro valor impide arrancar |
+| `SCHED_JWT_PUBLIC_KEYS` | (ninguna) | Llaves públicas Ed25519 que verifican los tokens: lista separada por comas de `kid=ruta.pem`, de una ruta a un `.pem` (el `kid` es el nombre sin extensión) o de un directorio con `*.pem`. Con `jwt` y sin llaves, **no arranca**. Varias llaves permiten rotar |
+| `SCHED_JWT_ISSUER` | (ninguno) | Valor exigido en `iss`. Obligatorio con `jwt` |
+| `SCHED_JWT_AUDIENCE` | (ninguno) | Valor que debe figurar en `aud`. Obligatorio con `jwt` |
+| `SCHED_JWT_CLOCK_SKEW_S` | `30` | Tolerancia de reloj, en segundos, para `exp`, `nbf` e `iat` |
+| `SCHED_JWT_MAX_TTL_S` | `900` | Vida máxima de un token (`exp - iat`), en segundos |
+| `SCHED_GRPC_TLS` | `required` | `required`: la ingesta gRPC exige TLS con autenticación mutua; sin los tres archivos de abajo **no arranca**. `disabled`: sin TLS, **solo desarrollo** (advierte al arrancar) |
+| `SCHED_GRPC_TLS_CERT` | (ninguno) | PEM con el certificado del servidor de ingesta (y su cadena) |
+| `SCHED_GRPC_TLS_KEY` | (ninguno) | PEM PKCS#8 con la llave privada del servidor |
+| `SCHED_GRPC_TLS_CLIENT_CA` | (ninguno) | PEM con la CA que firma los certificados de cliente de la institución |
+| `SCHED_NATS_USER`, `SCHED_NATS_PASSWORD` | (ninguno) | Credenciales del motor en NATS |
+| `SCHED_NATS_TOKEN` | (ninguno) | Alternativa a usuario y contraseña (son excluyentes) |
+| `SCHED_NATS_TLS_CA` | (ninguno) | PEM con la CA que firmó el certificado de NATS: activa TLS hacia NATS (use `SCHED_NATS_URL=tls://host:4222`) |
+
+`deploy/setup-dev.sh` genera todo lo necesario para el despliegue de desarrollo.
 
 ## Si algo falla
 

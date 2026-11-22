@@ -106,7 +106,8 @@ for rep in $(seq 1 "$REPS"); do
 
   # El gRPC de ingesta abre cuando el follower se pone al día: se reintenta como lo haría el SDK.
   for attempt in $(seq 1 50); do
-    SCHED_INGEST_URL="localhost:$GRPC" java -jar "$SIMULATOR" load bench/scenario.json >/dev/null 2>&1 && break
+    # SCHED_INGEST_TLS=disabled: el motor de la prueba corre con SCHED_GRPC_TLS=disabled.
+    SCHED_INGEST_TLS=disabled SCHED_INGEST_URL="localhost:$GRPC" java -jar "$SIMULATOR" load bench/scenario.json >/dev/null 2>&1 && break
     [ "$attempt" = 50 ] && { echo "no se pudo cargar el catálogo" >&2; exit 1; }
     sleep 0.2
   done

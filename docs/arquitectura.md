@@ -60,6 +60,51 @@ flowchart LR
 
 El SDK todavía no existe; hoy su papel lo cumple el simulador. Ver [sdk.md](sdk.md).
 
+## Seguridad
+
+El motor se despliega en la infraestructura de la institución y maneja datos académicos, así que
+cada frontera tiene su control. Los valores por defecto son los seguros; relajarlos es siempre
+una decisión explícita y el motor lo advierte en el log.
+
+| Frontera | Control | Configuración |
+|---|---|---|
+| Institución → ingesta (gRPC) | TLS con **autenticación mutua**: solo conecta un cliente con certificado firmado por la CA de la institución | `SCHED_GRPC_TLS=required` (defecto), `SCHED_GRPC_TLS_CERT/KEY/CLIENT_CA`. Sin los archivos no arranca |
+| Estudiante → consultas (HTTP) | **Token firmado** (JWT EdDSA/Ed25519) por la institución, con vida corta; el contexto del estudiante sale del token ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) | `SCHED_AUTH=jwt` (defecto), `SCHED_JWT_*`. Sin llaves no arranca. `/health` y `/ready` quedan sin token |
+| Motor → NATS | Usuario y contraseña (o token), TLS opcional y permisos mínimos: el usuario solo publica en `<prefijo>.catalog.>` y usa la API de su stream | `SCHED_NATS_USER/PASSWORD/TOKEN`, `SCHED_NATS_TLS_CA`, `deploy/nats/nats.conf` |
+| Internet → balanceador | Traefik sin panel, con límite de solicitudes por IP y simultáneas, y de tamaño del cuerpo | etiquetas de `engine` en `deploy/docker-compose.yml` |
+| Dentro del motor | Límites de cursos, ventanas e ids por solicitud, tamaño de cuerpo y tiempo máximo de búsqueda | `SCHED_MAX_*`, `SCHED_SEARCH_TIMEOUT_MS` |
+
+```mermaid
+flowchart LR
+    SDK["SDK / institución"] -- "gRPC · mTLS" --> ING["ingest"]
+    EST(("Estudiante")) -- "HTTP · Bearer JWT EdDSA" --> LB["Traefik<br/>(límites por IP y de cuerpo)"]
+    LB --> Q["engine (query)<br/>verifica la firma"]
+    ING -- "TLS + usuario" --> NATS[("NATS<br/>permisos mínimos")]
+    Q -- "TLS + usuario" --> NATS
+```
+
+Criterios que guían estos controles:
+
+- **Confidencialidad:** los canales entre partes distintas van cifrados. El TLS del HTTP de los
+  estudiantes se termina en el ingress de la institución (o en Traefik con su propio
+  certificado): el despliegue de desarrollo lo sirve en claro. La autenticación mutua evita que
+  un tercero se haga pasar por la institución al enviar el catálogo.
+- **El motor no conserva datos personales:** no tiene base de datos; el catálogo está en memoria
+  y en el historial de NATS (sin estudiantes); el contexto del estudiante vive solo durante la
+  solicitud y los logs nunca incluyen el token ni su contenido (solo un motivo genérico y el
+  `kid`).
+- **Integridad del contexto:** el estudiante no puede alterar sus cursos habilitados porque salen
+  de un token cuya firma solo la institución puede producir. La verificación vive en el adaptador
+  HTTP (`JwtAuthFilter`, `JwtVerifier`); los casos de uso reciben el contexto ya verificado y no
+  saben de tokens.
+- **Secretos fuera del repositorio:** certificados, llaves y contraseñas de desarrollo los genera
+  `deploy/setup-dev.sh` y están en `.gitignore`. En producción los entrega el gestor de secretos
+  de la institución.
+
+Pendiente (no cubierto aquí): el WebSocket de avisos en vivo, cuando exista, debe verificar el
+mismo token al abrirse; la rotación automática de certificados; y un proxy de solo lectura para el
+socket de Docker de Traefik en lugar de montarlo directamente.
+
 ## Recorrido de los datos
 
 ```mermaid

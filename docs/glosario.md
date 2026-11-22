@@ -18,7 +18,7 @@ Términos del proyecto. Entre paréntesis, el nombre que se usa en el código cu
 | **Orden lexicográfico** | Orden de las alternativas: primero menor distancia y, solo a igual distancia, menor penalización. No es una suma ponderada: conservar los grupos elegidos tiene prioridad absoluta sobre las preferencias |
 | **Cruce** (`overlaps`) | Dos franjas del mismo día que se superponen. Una combinación válida no tiene cruces |
 | **Combinación** (`Schedule`) | Un grupo por cada curso pedido, sin cruces entre ellos |
-| **Contexto del estudiante** (`StudentContext`) | Lo que el motor sabe del estudiante en una solicitud: su identificador y sus cursos habilitados. Llegará en un token firmado ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) |
+| **Contexto del estudiante** (`StudentContext`) | Lo que el motor sabe del estudiante en una solicitud: su identificador y sus cursos habilitados. Llega en un token firmado ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) |
 | **Cursos habilitados** (`eligible_courses`) | Cursos que el estudiante puede matricular según la institución (prerrequisitos, plan, etc.) |
 | **Solver** | El algoritmo que busca combinaciones. Hoy es `BacktrackingSolver`: búsqueda exhaustiva que descarta ramas con cruces |
 | **`seq`** | Número de secuencia que asigna la institución a cada carga y a cada cambio. Crece de uno en uno y permite detectar eventos perdidos |

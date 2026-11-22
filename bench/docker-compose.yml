@@ -20,6 +20,11 @@ services:
     environment:
       SCHED_ROLE: all
       SCHED_NATS_URL: nats://nats:4222
+      # La prueba de carga mide el motor, no la seguridad: sin token ni TLS, en una red aislada
+      # y efímera (NATS tampoco lleva autenticación aquí). Nunca lo copie a un despliegue real;
+      # ver deploy/docker-compose.yml para la configuración con seguridad.
+      SCHED_AUTH: none
+      SCHED_GRPC_TLS: disabled
       SCHED_MAX_COMBINATIONS: ${MAX_COMBINATIONS:-5}
       LOGGING_LEVEL_ROOT: warn
       LOGGING_LEVEL_SCHED_SERVER: info

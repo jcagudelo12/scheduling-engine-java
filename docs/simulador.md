@@ -40,11 +40,50 @@ docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01
 | `simulate` | Carga el escenario en un historial en memoria y calcula las combinaciones de cada estudiante | Tabla con combinaciones y tiempo por estudiante |
 | `load` | Envía los grupos del escenario con `LoadCatalog`. Si no se indica `seq`, usa `catalog_seq` del escenario | `catálogo cargado: seq=1 grupos=7` |
 | `seats` | Envía un `seats_changed` con `SyncChanges` y cierra la conexión | `respuesta del motor: ack seq=2` (o `resync_required` / `rejected`) |
+| `keygen` | Genera un par de llaves Ed25519 para firmar tokens de prueba | `<kid>.key` (privada) y `<kid>.pem` (pública) |
+| `token` | Imprime un token firmado para `Authorization: Bearer` | El JWT |
 
 Sin `escenario.json` se usa [`simulation/fixtures/sample.json`](../simulation/fixtures/sample.json).
 
 **Variable de entorno:** `SCHED_INGEST_URL`, dirección de la ingesta. Por defecto
 `localhost:50051`; en Docker Compose ya apunta a `ingest:50051`.
+
+### TLS con autenticación mutua
+
+La ingesta exige mTLS, así que `load` y `seats` presentan un certificado de cliente y confían en
+la CA del servidor. Se indican con opciones (que van en cualquier posición) o con variables:
+
+| Opción | Variable | Qué es |
+|---|---|---|
+| `--tls-cert <pem>` | `SCHED_INGEST_TLS_CERT` | Certificado de cliente de la institución |
+| `--tls-key <pem>` | `SCHED_INGEST_TLS_KEY` | Su llave privada (PKCS#8) |
+| `--tls-ca <pem>` | `SCHED_INGEST_TLS_CA` | CA que firmó el certificado del servidor |
+| `--plaintext` | `SCHED_INGEST_TLS=disabled` | Sin TLS; solo contra un motor con `SCHED_GRPC_TLS=disabled` (imprime un aviso) |
+
+Sin ninguna de las dos formas, el comando falla con un mensaje que lo explica. En Docker Compose el
+contenedor `simulator` ya trae las variables y monta `deploy/certs/client` (generado por
+`deploy/setup-dev.sh`). Desde el host:
+
+```sh
+java -jar simulation/target/sched-simulation.jar load --tls-cert deploy/certs/client/client.crt \
+  --tls-key deploy/certs/client/client.key --tls-ca deploy/certs/client/ca.crt
+```
+
+### Token firmado de prueba
+
+Para probar la API HTTP con `SCHED_AUTH=jwt` ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)):
+
+```sh
+# Un par de llaves; el motor carga la pública con SCHED_JWT_PUBLIC_KEYS=<directorio>
+java -jar simulation/target/sched-simulation.jar keygen --out /tmp/sched-keys --kid dev-1
+
+# Un token (iat = ahora, exp = ahora + ttl; ttl por defecto 600 s)
+java -jar simulation/target/sched-simulation.jar token --key /tmp/sched-keys/dev-1.key --kid dev-1 \
+  --student est-001 --courses MAT101,FIS101 --iss institucion-dev --aud sched-engine [--ttl 600]
+```
+
+Son herramientas de **desarrollo**: la llave privada vive en un archivo local. En producción
+firma la institución con su propia llave.
 
 ### Una sesión típica
 
