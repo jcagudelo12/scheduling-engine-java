@@ -15,9 +15,30 @@ service CatalogService {
 }
 
 // El catálogo se envía en bloques; todos los bloques de una carga llevan el mismo seq.
+//
+// Los créditos y las reglas del periodo viajan en los mismos bloques, no en un mensaje aparte:
+// así la carga sigue siendo un solo stream con un solo seq y se reemplaza de forma atómica.
+// Los cursos pueden repartirse en cualquier bloque (son miles, como los grupos); las reglas van
+// una sola vez en toda la carga, en cualquier bloque (se recomienda el primero).
 message CatalogChunk {
   uint64 seq = 1;
   repeated Section sections = 2;
+  // Créditos de las asignaturas de este bloque. Una asignatura sin crédito informado cuenta 0.
+  repeated Course courses = 3;
+  // Reglas del periodo. Ausentes: sin restricciones.
+  EnrollmentRules rules = 4;
+}
+
+// Asignatura y sus créditos. Los créditos dependen de la asignatura, no del grupo.
+message Course {
+  string course_id = 1;
+  uint32 credits = 2;
+}
+
+// Reglas de matrícula del periodo, parametrizadas por la institución.
+message EnrollmentRules {
+  // Máximo de créditos que un estudiante puede matricular. 0 = sin tope.
+  uint32 max_credits = 1;
 }
 
 message LoadCatalogResponse {

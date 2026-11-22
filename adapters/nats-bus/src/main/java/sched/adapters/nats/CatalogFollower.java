@@ -15,6 +15,8 @@ import sched.application.AppException;
 import sched.application.ApplyLogEntry;
 import sched.application.CatalogLogEntry;
 import sched.application.Readiness;
+import sched.domain.Course;
+import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
 import sched.proto.Convert;
 import sched.proto.engine.v1.SnapshotChunk;
@@ -147,6 +149,8 @@ public final class CatalogFollower implements AutoCloseable {
         private int total;
         private int nextIndex;
         private List<SectionSeats> sections = new ArrayList<>();
+        private List<Course> courses = new ArrayList<>();
+        private EnrollmentRules rules = EnrollmentRules.NONE;
 
         CatalogLogEntry push(SnapshotChunk chunk) {
             if (chunk.getIndex() == 0) {
@@ -154,11 +158,14 @@ public final class CatalogFollower implements AutoCloseable {
                 total = chunk.getTotal();
                 nextIndex = 0;
                 sections = new ArrayList<>();
+                courses = new ArrayList<>();
+                rules = EnrollmentRules.NONE;
             } else if (chunk.getSeq() != seq || chunk.getIndex() != nextIndex) {
                 log.error("bloque de carga fuera de orden: seq={} index={}", chunk.getSeq(), chunk.getIndex());
                 total = 0;
                 nextIndex = 0;
                 sections = new ArrayList<>();
+                courses = new ArrayList<>();
                 return null;
             }
 
@@ -169,11 +176,26 @@ public final class CatalogFollower implements AutoCloseable {
                     log.error("grupo inválido en la carga completa: {}", e.getMessage());
                 }
             }
+            for (var course : chunk.getCoursesList()) {
+                try {
+                    courses.add(Convert.course(course));
+                } catch (Convert.ConversionException e) {
+                    log.error("curso inválido en la carga completa: {}", e.getMessage());
+                }
+            }
+            if (chunk.hasRules()) {
+                try {
+                    rules = Convert.rules(chunk.getRules());
+                } catch (Convert.ConversionException e) {
+                    log.error("reglas inválidas en la carga completa: {}", e.getMessage());
+                }
+            }
             nextIndex++;
 
             if (nextIndex == total) {
-                CatalogLogEntry snapshot = new CatalogLogEntry.Snapshot(seq, sections);
+                CatalogLogEntry snapshot = new CatalogLogEntry.Snapshot(seq, sections, courses, rules);
                 sections = new ArrayList<>();
+                courses = new ArrayList<>();
                 return snapshot;
             }
             return null;

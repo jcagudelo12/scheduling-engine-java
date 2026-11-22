@@ -6,6 +6,7 @@ package engine.v1;
 option java_package = "sched.proto.engine.v1";
 option java_multiple_files = true;
 
+import "institution/v1/catalog.proto";
 import "institution/v1/common.proto";
 import "institution/v1/catalog_events.proto";
 
@@ -25,6 +26,10 @@ message SnapshotChunk {
   uint32 index = 2;
   uint32 total = 3;
   repeated institution.v1.Section sections = 4;
+  // Los cursos se reparten entre los bloques igual que los grupos; las reglas van en el
+  // bloque con index = 0.
+  repeated institution.v1.Course courses = 5;
+  institution.v1.EnrollmentRules rules = 6;
 }
 
 // La instancia de ingesta perdió la sincronía con la institución.

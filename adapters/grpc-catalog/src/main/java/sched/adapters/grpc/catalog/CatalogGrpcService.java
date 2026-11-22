@@ -8,6 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sched.application.AppException;
 import sched.application.IngestCatalog;
+import sched.domain.Course;
+import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
 import sched.proto.Convert;
 import sched.proto.institution.v1.CatalogChunk;
@@ -35,6 +37,9 @@ public final class CatalogGrpcService extends CatalogServiceGrpc.CatalogServiceI
         return new StreamObserver<>() {
             private Long seq;
             private final List<SectionSeats> sections = new ArrayList<>();
+            private final List<Course> courses = new ArrayList<>();
+            private EnrollmentRules rules = EnrollmentRules.NONE;
+            private boolean rulesReceived;
             private boolean failed;
 
             @Override
@@ -52,6 +57,17 @@ public final class CatalogGrpcService extends CatalogServiceGrpc.CatalogServiceI
                 try {
                     for (var section : chunk.getSectionsList()) {
                         sections.add(Convert.section(section));
+                    }
+                    for (var course : chunk.getCoursesList()) {
+                        courses.add(Convert.course(course));
+                    }
+                    if (chunk.hasRules()) {
+                        if (rulesReceived) {
+                            fail(Status.INVALID_ARGUMENT.withDescription("reglas del periodo repetidas en la carga"));
+                            return;
+                        }
+                        rulesReceived = true;
+                        rules = Convert.rules(chunk.getRules());
                     }
                 } catch (Convert.ConversionException e) {
                     fail(Status.INVALID_ARGUMENT.withDescription(e.getMessage()));
@@ -73,7 +89,7 @@ public final class CatalogGrpcService extends CatalogServiceGrpc.CatalogServiceI
                     return;
                 }
                 try {
-                    int loaded = loadCatalog.execute(seq, sections);
+                    int loaded = loadCatalog.execute(seq, sections, courses, rules);
                     response.onNext(LoadCatalogResponse.newBuilder()
                             .setSeq(seq)
                             .setSectionsLoaded(loaded)

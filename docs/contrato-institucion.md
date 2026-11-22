@@ -34,6 +34,23 @@ Un **grupo** (`Section`) es la unidad del catálogo:
 | `capacity` | Cupo total |
 | `available_seats` | Cupo disponible ahora. Con 0 el grupo no se ofrece a los estudiantes |
 
+### Créditos y reglas del periodo
+
+La carga completa (`CatalogChunk`) lleva, además de los grupos, los créditos de cada asignatura
+y las reglas de matrícula del periodo. Se cargan una vez por periodo junto con la oferta, así
+que cambiar el máximo de créditos no requiere tocar el motor: basta enviar una nueva carga.
+
+| Campo del bloque | Descripción |
+|---|---|
+| `courses[]` (`Course`) | `course_id` (obligatorio) y `credits` (≥ 0). Los créditos dependen de la asignatura, no del grupo. Pueden repartirse en cualquier bloque. Un curso sin entrada cuenta 0 créditos |
+| `rules` (`EnrollmentRules`) | `max_credits`: máximo de créditos que un estudiante puede matricular. **0 o ausente = sin tope**. Va una sola vez en toda la carga, en cualquier bloque (se recomienda el primero) |
+
+Los campos son nuevos (números 3 y 4 de `CatalogChunk`), así que una carga sin ellos sigue siendo
+válida y equivale a «sin créditos ni tope». Los eventos de `SyncChanges` no cambian créditos ni
+reglas: para modificarlos hay que hacer una carga completa. El motor usa estos datos para
+rechazar, antes de buscar, las solicitudes que superan el tope
+([`422`](api-http.md#errores)).
+
 ## El número de secuencia `seq`
 
 Todo lo que envía la institución lleva un `seq`, y es lo que permite al motor detectar si se
@@ -74,7 +91,7 @@ El motor responde una sola vez:
 
 | Error gRPC | Cuándo |
 |---|---|
-| `INVALID_ARGUMENT` | Bloques con `seq` distinto, un grupo sin `section_id` o `course_id`, una franja inválida o una carga vacía. **La carga completa se descarta** |
+| `INVALID_ARGUMENT` | Bloques con `seq` distinto, un grupo sin `section_id` o `course_id`, una franja inválida, un curso sin `course_id` o con créditos fuera de rango, reglas repetidas en la carga, o una carga vacía. **La carga completa se descarta** |
 | `INTERNAL` | No se pudo escribir en el historial, por ejemplo porque NATS no está disponible |
 
 Partir en bloques evita mensajes enormes. Un tamaño razonable es de unos cientos de grupos por
