@@ -2,6 +2,7 @@ package sched.application;
 
 import java.time.Duration;
 import java.util.List;
+import sched.application.ports.EngineMetrics;
 import sched.domain.EnrollmentRules;
 import sched.domain.Preferences;
 import sched.domain.Section;
@@ -36,6 +37,7 @@ public final class GenerateCombinations {
     private final CatalogReplica replica;
     private final int maxResults;
     private final Duration searchTimeout;
+    private final EngineMetrics metrics;
 
     /** Sin tiempo máximo de búsqueda. */
     public GenerateCombinations(Solver solver, CatalogReplica replica, int maxResults) {
@@ -44,6 +46,13 @@ public final class GenerateCombinations {
 
     /** @param searchTimeout tiempo máximo de la búsqueda; {@code null} = sin límite */
     public GenerateCombinations(Solver solver, CatalogReplica replica, int maxResults, Duration searchTimeout) {
+        this(solver, replica, maxResults, searchTimeout, EngineMetrics.NOOP);
+    }
+
+    /** @param metrics recibe la duración y el resultado de cada búsqueda */
+    public GenerateCombinations(
+            Solver solver, CatalogReplica replica, int maxResults, Duration searchTimeout, EngineMetrics metrics) {
+        this.metrics = metrics;
         this.solver = solver;
         this.replica = replica;
         this.maxResults = maxResults;
@@ -69,7 +78,10 @@ public final class GenerateCombinations {
         Preferences preferences = student.preferences();
         SectionCost cost = preferences.isEmpty() ? SectionCost.ZERO : preferences::penaltyOf;
         Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxResults, cost, searchTimeout);
+        long started = System.nanoTime();
         SearchResult found = solver.search(problem);
+        metrics.searchFinished(EngineMetrics.Operation.COMBINATIONS, Duration.ofNanos(System.nanoTime() - started),
+                found.results().size(), found.complete(), found.nodes());
         List<ScoredSchedule> schedules = found.results().stream()
                 .map(scored -> new ScoredSchedule(scored.schedule(), scored.cost()))
                 .toList();

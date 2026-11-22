@@ -178,7 +178,7 @@ public final class ForwardCheckingSolver implements Solver {
                 }
                 result.add(new Scored(new Schedule(picked), e.cost));
             }
-            return new SearchResult(result, !budget.cut());
+            return new SearchResult(result, !budget.cut(), stats.nodes);
         }
 
         private boolean full() {

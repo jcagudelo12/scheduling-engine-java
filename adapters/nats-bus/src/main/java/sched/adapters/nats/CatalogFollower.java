@@ -6,6 +6,7 @@ import io.nats.client.IterableConsumer;
 import io.nats.client.Message;
 import io.nats.client.api.DeliverPolicy;
 import io.nats.client.api.OrderedConsumerConfiguration;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +16,7 @@ import sched.application.AppException;
 import sched.application.ApplyLogEntry;
 import sched.application.CatalogLogEntry;
 import sched.application.Readiness;
+import sched.application.ports.EngineMetrics;
 import sched.domain.Course;
 import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
@@ -36,10 +38,17 @@ public final class CatalogFollower implements AutoCloseable {
     private final String streamName;
     private final ApplyLogEntry apply;
     private final Readiness readiness;
+    private final EngineMetrics metrics;
     private volatile boolean running = true;
     private Thread thread;
 
     public CatalogFollower(Connection connection, String streamName, ApplyLogEntry apply, Readiness readiness) {
+        this(connection, streamName, apply, readiness, EngineMetrics.NOOP);
+    }
+
+    public CatalogFollower(
+            Connection connection, String streamName, ApplyLogEntry apply, Readiness readiness, EngineMetrics metrics) {
+        this.metrics = metrics;
         this.connection = connection;
         this.streamName = streamName;
         this.apply = apply;
@@ -65,6 +74,7 @@ public final class CatalogFollower implements AutoCloseable {
                     return;
                 }
                 readiness.markBehind();
+                metrics.followerResync();
                 applyEntry(new CatalogLogEntry.SyncLost());
                 try {
                     Thread.sleep(RETRY_DELAY);
@@ -90,6 +100,7 @@ public final class CatalogFollower implements AutoCloseable {
         if (jsm.getStreamInfo(streamName).getStreamState().getMsgCount() == 0) {
             // Historial vacío: no hay nada que esperar, aunque tampoco hay catálogo aún.
             readiness.markCaughtUp();
+            metrics.followerLag(0);
         }
 
         var consumer = connection.getStreamContext(streamName)
@@ -100,9 +111,15 @@ public final class CatalogFollower implements AutoCloseable {
             while (running) {
                 Message message = messages.nextMessage(POLL);
                 if (message == null) {
+                    // Sin conexión el consumidor no lanza nada: solo deja de recibir. Sin este
+                    // control la instancia seguiría "lista" con una réplica que ya no se actualiza.
+                    if (connection.getStatus() != Connection.Status.CONNECTED) {
+                        throw new IOException("se perdió la conexión con NATS (" + connection.getStatus() + ")");
+                    }
                     continue;
                 }
-                boolean caughtUp = message.metaData().pendingCount() == 0;
+                long pending = message.metaData().pendingCount();
+                boolean caughtUp = pending == 0;
 
                 try {
                     var entry = sched.proto.engine.v1.CatalogLogEntry.parseFrom(message.getData());
@@ -114,6 +131,7 @@ public final class CatalogFollower implements AutoCloseable {
                     log.error("entrada del historial ilegible: {}", e.getMessage());
                 }
 
+                metrics.followerLag(pending);
                 if (caughtUp && !readiness.isCaughtUp()) {
                     log.info("réplica al día con el historial");
                     readiness.markCaughtUp();

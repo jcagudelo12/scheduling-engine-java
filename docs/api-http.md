@@ -183,6 +183,13 @@ los cursos). Los valores por defecto son los de un pregrado y se cambian con var
 Los ids (estudiante, curso y grupo) deben ser no vacíos y usar solo letras ASCII, dígitos, `-`,
 `_` y `.`. Estar justo en el límite se acepta; excederlo es un `400` (o `413` para el cuerpo).
 
+### Id de correlación
+
+Toda respuesta (también las de error y los `401`) trae la cabecera `X-Request-Id`. Si la solicitud
+envía una, con letras, dígitos, `.`, `_` o `-` (hasta 64 caracteres), se conserva; si no, el motor
+genera un UUID. El mismo id aparece en los logs del motor para esa solicitud: indíquelo al reportar un
+problema.
+
 ### Errores
 
 | Código | Cuándo | Cuerpo |

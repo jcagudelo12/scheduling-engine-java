@@ -182,6 +182,8 @@ pruebas, C puede agregarse como un segundo límite sin cambiar la API (`search` 
 - **Pendiente de medir:** el porcentaje de respuestas cortadas y la distancia de su puntaje al
   top 5 exacto con perfiles 7 × 8 reales (el 99 % de E2), y el efecto sobre la p99 de las demás
   solicitudes. El límite de 150 ms es un valor inicial: se ajusta con esas mediciones.
+  El motor ya cuenta las búsquedas cortadas (`sched_search_incomplete_total`, ver
+  [arquitectura.md](../arquitectura.md#observabilidad)); falta recogerlas en un pico real.
 - **No resuelve** la cota de entrada: el tiempo máximo acota cada solicitud, no su cantidad. El
   tope de cursos y de tamaño de la solicitud se trata aparte (validación de entrada).
 - Las respuestas incompletas no se guardan ni se reutilizan: cada solicitud calcula la suya.

@@ -2,6 +2,7 @@ package sched.server;
 
 import io.grpc.ServerCredentials;
 import io.grpc.protobuf.services.ProtoReflectionServiceV1;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.nats.client.Connection;
 import java.time.Duration;
 import java.util.List;
@@ -19,6 +20,7 @@ import sched.adapters.http.CombinationsController;
 import sched.adapters.http.HealthController;
 import sched.adapters.http.HttpExceptionHandler;
 import sched.adapters.http.JwtAuthFilter;
+import sched.adapters.http.RequestIdFilter;
 import sched.adapters.http.RequestLimits;
 import sched.adapters.http.auth.JwtVerifier;
 import sched.adapters.http.auth.PublicKeys;
@@ -33,6 +35,7 @@ import sched.application.IngestCatalogEvent;
 import sched.application.IngestState;
 import sched.application.Readiness;
 import sched.application.SuggestAlternatives;
+import sched.application.ports.EngineMetrics;
 import sched.solver.BacktrackingSolver;
 import sched.solver.ForwardCheckingSolver;
 import sched.solver.Solver;
@@ -49,6 +52,30 @@ class EngineConfig {
     @Bean
     Role role(@Value("${sched.role}") String role) {
         return Role.parse(role);
+    }
+
+    // Métricas: el núcleo solo conoce el puerto EngineMetrics; Micrometer queda aquí.
+
+    @Bean
+    EngineMetrics engineMetrics(MeterRegistry registry) {
+        return new MicrometerEngineMetrics(registry);
+    }
+
+    @Bean
+    ReplicaMeters replicaMeters(CatalogReplica replica, Readiness readiness) {
+        return new ReplicaMeters(replica, readiness);
+    }
+
+    /** Spring Boot lo registra como filtro del servlet; mide las consultas y cuenta los rechazos. */
+    @Bean
+    HttpMetricsFilter httpMetricsFilter(MeterRegistry registry) {
+        return new HttpMetricsFilter(registry);
+    }
+
+    /** Id de correlación de cada solicitud ({@code X-Request-Id}); primero en la cadena de filtros. */
+    @Bean
+    RequestIdFilter requestIdFilter() {
+        return new RequestIdFilter();
     }
 
     // Historial compartido y réplica local (todas las instancias).
@@ -88,9 +115,10 @@ class EngineConfig {
             @Value("${sched.nats.stream}") String stream,
             CatalogReplica replica,
             Readiness readiness,
+            EngineMetrics metrics,
             JetStreamCatalogLog catalogLog) {
         // catalogLog se inyecta para garantizar que el stream exista antes de leerlo.
-        return new CatalogFollower(nats, stream, new ApplyLogEntry(replica), readiness);
+        return new CatalogFollower(nats, stream, new ApplyLogEntry(replica), readiness, metrics);
     }
 
     // HTTP: sondas siempre; consultas de estudiantes según el rol.
@@ -179,9 +207,10 @@ class EngineConfig {
             CatalogReplica replica,
             @Value("${sched.max-combinations}") int maxCombinations,
             @Value("${sched.search-timeout-ms}") long timeoutMs,
-            RequestLimits limits) {
+            RequestLimits limits,
+            EngineMetrics metrics) {
         return new CombinationsController(
-                new GenerateCombinations(solver, replica, maxCombinations, searchTimeout(timeoutMs)), limits);
+                new GenerateCombinations(solver, replica, maxCombinations, searchTimeout(timeoutMs), metrics), limits);
     }
 
     @Bean
@@ -191,9 +220,10 @@ class EngineConfig {
             CatalogReplica replica,
             @Value("${sched.max-alternatives}") int maxAlternatives,
             @Value("${sched.search-timeout-ms}") long timeoutMs,
-            RequestLimits limits) {
+            RequestLimits limits,
+            EngineMetrics metrics) {
         return new AlternativesController(
-                new SuggestAlternatives(solver, replica, maxAlternatives, searchTimeout(timeoutMs)), limits);
+                new SuggestAlternatives(solver, replica, maxAlternatives, searchTimeout(timeoutMs), metrics), limits);
     }
 
     /** {@code SCHED_SEARCH_TIMEOUT_MS = 0} desactiva el tiempo máximo (ADR 0009). */
@@ -216,13 +246,14 @@ class EngineConfig {
             @Value("${sched.grpc.tls-client-ca}") String tlsClientCa,
             CatalogReplica replica,
             Readiness readiness,
+            EngineMetrics metrics,
             JetStreamCatalogLog catalogLog) {
         // Las credenciales se arman aquí, no al abrir el puerto: sin archivos válidos no arranca.
         ServerCredentials credentials = GrpcCredentials.server(tlsMode, tlsCert, tlsKey, tlsClientCa);
         IngestState ingest = new IngestState(replica);
         return new IngestGrpcServer(port, credentials, readiness, List.of(
-                new CatalogGrpcService(new IngestCatalog(ingest, catalogLog)),
-                new CatalogEventsGrpcService(new IngestCatalogEvent(ingest, catalogLog)),
+                new CatalogGrpcService(new IngestCatalog(ingest, catalogLog, metrics)),
+                new CatalogEventsGrpcService(new IngestCatalogEvent(ingest, catalogLog, metrics)),
                 // Reflection: grpcurl, grpcui y Postman descubren los servicios sin los .proto.
                 ProtoReflectionServiceV1.newInstance()));
     }

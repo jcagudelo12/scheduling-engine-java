@@ -13,10 +13,16 @@ import java.util.List;
  *
  * @param results combinaciones por costo creciente y luego por ids de grupo
  * @param complete {@code false} si la búsqueda se cortó por el tiempo máximo
+ * @param nodes nodos explorados, solo para medir; negativo si el solver no lo informa
  */
-public record SearchResult(List<Scored> results, boolean complete) {
+public record SearchResult(List<Scored> results, boolean complete, long nodes) {
 
     public SearchResult {
         results = List.copyOf(results);
+    }
+
+    /** Sin información de los nodos explorados. */
+    public SearchResult(List<Scored> results, boolean complete) {
+        this(results, complete, -1);
     }
 }

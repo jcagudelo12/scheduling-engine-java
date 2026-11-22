@@ -20,6 +20,9 @@
         <dependency><groupId>sched</groupId><artifactId>sched-adapter-grpc-events</artifactId></dependency>
         <dependency><groupId>sched</groupId><artifactId>sched-adapter-nats-bus</artifactId></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-webmvc</artifactId></dependency>
+        <!-- Métricas y administración: solo aquí; el núcleo no depende de Micrometer. -->
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+        <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-registry-prometheus</artifactId></dependency>
         <dependency><groupId>io.nats</groupId><artifactId>jnats</artifactId></dependency>
         <dependency><groupId>io.grpc</groupId><artifactId>grpc-netty-shaded</artifactId></dependency>
         <dependency><groupId>io.grpc</groupId><artifactId>grpc-services</artifactId></dependency>
@@ -29,6 +32,10 @@
             <scope>test</scope>
         </dependency>
         <dependency><groupId>sched</groupId><artifactId>sched-adapter-in-memory</artifactId><scope>test</scope></dependency>
+        <!-- Pruebas: MockMvc, @SpringBootTest (extremo a extremo) y Testcontainers con NATS real. -->
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.testcontainers</groupId><artifactId>testcontainers-junit-jupiter</artifactId><scope>test</scope></dependency>
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcpkix-jdk18on</artifactId>
@@ -42,6 +49,11 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <!-- El ejecutable es sched-server-exec.jar; el jar normal (sched-server.jar) queda como
+                         dependencia utilizable por quality/ (ArchUnit y cobertura agregada). -->
+                    <classifier>exec</classifier>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

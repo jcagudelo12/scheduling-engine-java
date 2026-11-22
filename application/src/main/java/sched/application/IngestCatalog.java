@@ -4,6 +4,7 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sched.application.ports.CatalogLog;
+import sched.application.ports.EngineMetrics;
 import sched.domain.Course;
 import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
@@ -15,10 +16,16 @@ public final class IngestCatalog {
 
     private final IngestState ingest;
     private final CatalogLog catalogLog;
+    private final EngineMetrics metrics;
 
     public IngestCatalog(IngestState ingest, CatalogLog catalogLog) {
+        this(ingest, catalogLog, EngineMetrics.NOOP);
+    }
+
+    public IngestCatalog(IngestState ingest, CatalogLog catalogLog, EngineMetrics metrics) {
         this.ingest = ingest;
         this.catalogLog = catalogLog;
+        this.metrics = metrics;
     }
 
     /** Carga sin créditos ni reglas del periodo. */
@@ -41,6 +48,7 @@ public final class IngestCatalog {
             }
             ingest.reset(seq);
         }
+        metrics.snapshotIngested(sections.size());
         log.info("carga completa escrita en el historial: seq={} grupos={} cursos={} max_creditos={}",
                 seq, sections.size(), courses.size(), rules.maxCredits());
         return sections.size();

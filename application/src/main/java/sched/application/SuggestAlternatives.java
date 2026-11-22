@@ -16,6 +16,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import sched.application.ports.EngineMetrics;
 import sched.domain.CourseId;
 import sched.domain.EnrollmentRules;
 import sched.domain.Preferences;
@@ -84,6 +85,7 @@ public final class SuggestAlternatives {
     private final CatalogReplica replica;
     private final int maxAlternatives;
     private final Duration searchTimeout;
+    private final EngineMetrics metrics;
 
     /** Sin tiempo máximo de búsqueda. */
     public SuggestAlternatives(Solver solver, CatalogReplica replica, int maxAlternatives) {
@@ -92,6 +94,13 @@ public final class SuggestAlternatives {
 
     /** @param searchTimeout tiempo máximo de la búsqueda; {@code null} = sin límite */
     public SuggestAlternatives(Solver solver, CatalogReplica replica, int maxAlternatives, Duration searchTimeout) {
+        this(solver, replica, maxAlternatives, searchTimeout, EngineMetrics.NOOP);
+    }
+
+    /** @param metrics recibe la duración y el resultado de cada búsqueda */
+    public SuggestAlternatives(
+            Solver solver, CatalogReplica replica, int maxAlternatives, Duration searchTimeout, EngineMetrics metrics) {
+        this.metrics = metrics;
         this.solver = solver;
         this.replica = replica;
         this.maxAlternatives = maxAlternatives;
@@ -177,7 +186,10 @@ public final class SuggestAlternatives {
         SectionCost cost = lexicographicCost(snapshot.candidates(), chosen, preferences);
         Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxAlternatives, cost, searchTimeout);
 
+        long started = System.nanoTime();
         SearchResult found = solver.search(problem);
+        metrics.searchFinished(EngineMetrics.Operation.ALTERNATIVES, Duration.ofNanos(System.nanoTime() - started),
+                found.results().size(), found.complete(), found.nodes());
         List<Alternative> alternatives = new ArrayList<>();
         for (Scored scored : found.results()) {
             alternatives.add(describe(scored, student.eligibleCourses(), chosen, reasons, preferences));

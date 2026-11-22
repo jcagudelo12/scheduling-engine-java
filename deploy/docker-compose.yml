@@ -15,6 +15,11 @@
 # - lb:     Traefik en :8080, reparte HTTP entre las instancias de consulta y solo envía tráfico a
 #           las "healthy" (su /ready responde 200). Limita solicitudes por IP, solicitudes
 #           simultáneas y tamaño del cuerpo. Sin panel ni API expuestos.
+# - prometheus (opcional, perfil "observability"): raspa el puerto de administración de cada instancia
+#           (:8081, /actuator/prometheus) por la red interna. Ese puerto no pasa por Traefik, no exige
+#           token y no se publica al host; solo Prometheus lo alcanza. La interfaz de Prometheus queda
+#           en 127.0.0.1:9090 (solo la máquina local):
+#             docker compose -f deploy/docker-compose.yml --profile observability up -d
 #
 # Los secretos (deploy/.env, deploy/certs/, deploy/keys/) los genera deploy/setup-dev.sh y no se
 # versionan. El HTTP de los estudiantes va sin TLS en este despliegue: en producción el TLS se
@@ -120,6 +125,25 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
+  # Métricas del motor (solo desarrollo): ver deploy/prometheus/. Perfil opcional.
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    profiles: [observability]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules.yml:/etc/prometheus/rules.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      # Solo en la interfaz local: sin autenticación, no debe quedar abierta a la red.
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      - engine
+      - ingest
+    restart: unless-stopped
+
   # Institución simulada (solo para desarrollo). No arranca con "up": se usa a demanda con
   #   docker compose -f deploy/docker-compose.yml run --rm simulator load
   #   docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01 0
@@ -144,3 +168,4 @@ services:
 
 volumes:
   nats-data:
+  prometheus-data:

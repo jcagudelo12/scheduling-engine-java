@@ -1,0 +1,43 @@
+# Reglas de ejemplo para el SLO de las consultas (p99 < 200 ms, escenario E2) y para las medidas
+# del ADR 0009. Sin Alertmanager en este despliegue: se ven en la pestaña Alerts de Prometheus.
+groups:
+  - name: sched-engine
+    rules:
+      # Percentiles de todo el servicio (suma de las réplicas) a partir de las cubetas del histograma.
+      - record: sched:http_latency_seconds:p50
+        expr: histogram_quantile(0.5, sum by (endpoint, le) (rate(sched_http_latency_seconds_bucket{status="200"}[5m])))
+      - record: sched:http_latency_seconds:p95
+        expr: histogram_quantile(0.95, sum by (endpoint, le) (rate(sched_http_latency_seconds_bucket{status="200"}[5m])))
+      - record: sched:http_latency_seconds:p99
+        expr: histogram_quantile(0.99, sum by (endpoint, le) (rate(sched_http_latency_seconds_bucket{status="200"}[5m])))
+      # Fracción de solicitudes que cumplen el SLO de 200 ms.
+      - record: sched:http_latency_slo_ratio
+        expr: >
+          sum by (endpoint) (rate(sched_http_latency_seconds_bucket{status="200", le="0.2"}[5m]))
+          / sum by (endpoint) (rate(sched_http_latency_seconds_count{status="200"}[5m]))
+
+      - alert: SchedLatencyP99AboveSlo
+        expr: sched:http_latency_seconds:p99 > 0.2
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "p99 de {{ $labels.endpoint }} por encima de 200 ms"
+      # ADR 0009: búsquedas cortadas por el tiempo máximo (complete=false).
+      - alert: SchedSearchesCutByTimeout
+        expr: sum(rate(sched_search_incomplete_total[5m])) > 0
+        for: 5m
+        labels: {severity: info}
+        annotations:
+          summary: "Hay búsquedas que se cortan por SCHED_SEARCH_TIMEOUT_MS (respuestas con complete=false)"
+      - alert: SchedReplicaStale
+        expr: sched_replica_stale == 1
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "La réplica {{ $labels.instance }} está desactualizada: la institución debe reenviar la carga completa"
+      - alert: SchedReplicaNotReady
+        expr: sched_replica_ready == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: "La instancia {{ $labels.instance }} no está lista (no recibe tráfico del balanceador)"

@@ -3,6 +3,7 @@ package sched.application;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sched.application.ports.CatalogLog;
+import sched.application.ports.EngineMetrics;
 import sched.domain.ApplyOutcome;
 import sched.domain.CatalogEvent;
 
@@ -13,10 +14,16 @@ public final class IngestCatalogEvent {
 
     private final IngestState ingest;
     private final CatalogLog catalogLog;
+    private final EngineMetrics metrics;
 
     public IngestCatalogEvent(IngestState ingest, CatalogLog catalogLog) {
+        this(ingest, catalogLog, EngineMetrics.NOOP);
+    }
+
+    public IngestCatalogEvent(IngestState ingest, CatalogLog catalogLog, EngineMetrics metrics) {
         this.ingest = ingest;
         this.catalogLog = catalogLog;
+        this.metrics = metrics;
     }
 
     /**
@@ -38,19 +45,23 @@ public final class IngestCatalogEvent {
                 admission = ingest.admit(event.seq());
             } catch (AppException.SequenceGap gap) {
                 log.warn("hueco en los cambios de la institución: {}", gap.getMessage());
+                metrics.ingestEvent(EngineMetrics.IngestOutcome.GAP);
                 notifySyncLost();
                 throw gap;
             }
             if (admission == IngestState.Admission.DUPLICATE) {
+                metrics.ingestEvent(EngineMetrics.IngestOutcome.DUPLICATE);
                 return ApplyOutcome.DUPLICATE;
             }
 
             try {
                 catalogLog.append(new CatalogLogEntry.Change(event));
             } catch (PortException e) {
+                metrics.ingestEvent(EngineMetrics.IngestOutcome.FAILED);
                 throw new AppException.PortFailure(e);
             }
             ingest.commit(event.seq());
+            metrics.ingestEvent(EngineMetrics.IngestOutcome.APPLIED);
             return ApplyOutcome.APPLIED;
         }
     }
@@ -64,6 +75,7 @@ public final class IngestCatalogEvent {
     private void notifySyncLost() {
         // Bajo el mismo candado para no intercalarse entre un cambio y su escritura.
         synchronized (ingest) {
+            metrics.syncLost();
             try {
                 catalogLog.append(new CatalogLogEntry.SyncLost());
             } catch (PortException e) {

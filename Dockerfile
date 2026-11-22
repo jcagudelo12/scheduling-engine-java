@@ -29,9 +29,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home sched
-COPY --from=builder /app/server/target/sched-server.jar /app/sched-server.jar
+COPY --from=builder /app/server/target/sched-server-exec.jar /app/sched-server.jar
 USER sched
-EXPOSE 8080 50051
+# 8080: HTTP de los estudiantes; 50051: gRPC de ingesta; 8081: administración y métricas
+# (/actuator/health y /actuator/prometheus, sin token): no debe publicarse fuera de la red interna.
+EXPOSE 8080 8081 50051
 HEALTHCHECK --interval=5s --timeout=2s --retries=3 CMD curl -fsS http://localhost:8080/ready || exit 1
 # La JVM usa hasta el 75 % de la memoria asignada al contenedor.
 # Netty (gRPC) carga librerías nativas; Java 22+ pide declararlo para no advertir.
