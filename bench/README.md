@@ -91,6 +91,16 @@ Ninguna solicitud falló ni quedó sin atender en ninguna tasa.
 - Para más carga: más réplicas de consulta detrás de Traefik
   ([ADR 0005](../docs/adr/0005-varias-instancias-con-historial-compartido.md)).
 
+### Comparar los solvers
+
+`SolverComparisonBenchmark` mide `forward-checking` y `backtracking` en el caso de 6 cursos × 5
+grupos y en un peor caso sin solución (7 cursos × 8 grupos, el último choca con todo):
+
+```bash
+./mvnw -q -pl benchmarks -am package -DskipTests
+java -jar benchmarks/target/benchmarks.jar SolverComparisonBenchmark
+```
+
 ### Limitaciones
 
 - El generador de carga corre en la misma máquina que el motor, aunque en núcleos separados.
