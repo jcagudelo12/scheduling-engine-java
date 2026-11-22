@@ -147,7 +147,9 @@ Ninguna solicitud falló ni quedó sin atender en ninguna tasa.
 ### Comparar los solvers
 
 `SolverComparisonBenchmark` mide `forward-checking` y `backtracking` en el caso de 6 cursos × 5
-grupos y en un peor caso sin solución (7 cursos × 8 grupos, el último choca con todo):
+grupos, en un peor caso sin solución (7 cursos × 8 grupos, el último choca con todo) y en un caso tipo
+matrícula (7 cursos × 6 grupos de 2 franjas de 120 min, semilla fija) con 5, 50 y 500 resultados, sin costo
+(`enrollment*`) y con costo por madrugar/trasnochar (`enrollmentCost*`):
 
 ```bash
 ./mvnw -q -pl benchmarks -am package -DskipTests

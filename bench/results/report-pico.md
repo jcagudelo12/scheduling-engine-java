@@ -106,15 +106,31 @@ el caso que sí lo supera es el de pigeonhole sin solución del ADR (12 asignatu
 de S7. Por tanto: **no se pudo medir la distancia del puntaje al top 5 exacto (no hubo cortes)** y el "99 % exactas" de E2 se
 cumple con 100 % en estos datos.
 
-## JMH, `SolverComparisonBenchmark` (`-wi 2 -i 3 -f 1 -w 2 -r 2`)
+## JMH, `SolverComparisonBenchmark` (`-wi 3 -i 5 -f 1 -w 2 -r 2`)
 
-| Caso | `backtracking` | `forward-checking` (solver por defecto) |
-|---|---|---|
-| 6 asignaturas x 5 grupos, hasta 500 resultados | 58,9 ± 4,2 us | 416 ± 9,6 us |
-| 7 x 8 sin solución (el último choca con todo) | 77.927 ± 8.501 us (78 ms) | 23,8 ± 0,8 us |
+Comando: `java -jar benchmarks/target/benchmarks.jar SolverComparisonBenchmark -wi 3 -i 5 -f 1 -w 2 -r 2 -rf json -rff bench/results/jmh-solver-{antes,despues}.json`.
+"Antes" se midió con el solver de `HEAD` (jar compilado antes de tocar `ForwardCheckingSolver` y `SlotBitmaps`); "después" con la optimización.
+Los JSON crudos quedan en local (`bench/results/*.json` no se versiona; el comando de arriba los regenera). Tiempos en us por operación.
 
-`forward-checking` descarta el caso sin solución 3.000 veces más rápido, pero es 7 veces más lento al enumerar
-500 resultados (en producción se piden 5, donde la diferencia no se midió aparte). Muestras cortas (3 iteraciones): úsese como orden de magnitud.
+| Caso | `backtracking` | `forward-checking` antes | `forward-checking` después |
+|---|---|---|---|
+| 6 asignaturas x 5 grupos, hasta 500 resultados, sin costo | 59,5 | 414,6 | 71,9 |
+| 7 x 8 sin solución (el último choca con todo) | 82.014 | 24,1 | 20,3 |
+| Matrícula 7 x 6 (2 franjas de 120 min), 5 resultados, sin costo | 5,3 | 20,5 | 16,1 |
+| ídem, 50 resultados | 17,0 | 44,0 | 26,3 |
+| ídem, 500 resultados | 154,4 | 383,2 | 145,3 |
+| Matrícula con costo (madrugar/trasnochar), 5 resultados | 10.289 | 29,9 | 25,3 |
+| ídem, 50 resultados | 10.130 | 78,6 | 64,4 |
+| ídem, 500 resultados | 10.194 | 744,4 | 524,3 |
+
+Asignación del caso 6x5 con `-prof gc`: 166.178 B/op antes, 159.088 B/op después. Perfil (async-profiler, 6x5 antes): ~50 % del tiempo
+en `compareIds` (comparación de `SectionId` como texto) y ~40 % en `record`/`PriorityQueue`, más la ordenación final; la preparación (streams, boxing)
+fue ~2 %, así que no era el cuello de botella.
+
+Conclusión: la optimización (rangos enteros por grupo en lugar de comparar texto, y lista sin cola de prioridad cuando no hay costo) deja a
+`forward-checking` en el nivel de `backtracking` en los casos sin costo con muchos resultados (6x5: 72 vs 60 us, sigue ~20 % más lento;
+matrícula con 500: igual), pero sigue siendo más lento con pocos resultados sin costo (5 resultados: 16 vs 5 us) porque paga la preparación
+(conflictos, dominios). Con costo y en el caso sin solución es de lejos más rápido. Muestras cortas (5 iteraciones): úsese como orden de magnitud.
 
 ## Conclusiones
 
