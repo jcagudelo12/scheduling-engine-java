@@ -1,0 +1,82 @@
+{
+  "fuente": "Consulta a 135 estudiantes, 2026-2 (Anexo A del documento de investigación). Porcentajes de las tablas A3, A4, A6, A9, A11, A13 y A14.",
+  "n": 135,
+  "programa": {
+    "tabla": "A3",
+    "uso": "entrada: genera el programa de cada perfil",
+    "categorias": [
+      { "id": "MECATRONICA", "etiqueta": "Ing. Mecatrónica", "porcentaje": 58.5 },
+      { "id": "SISTEMAS", "etiqueta": "Ing. de Sistemas", "porcentaje": 35.6 },
+      { "id": "OTROS", "etiqueta": "Otros", "porcentaje": 5.9 }
+    ]
+  },
+  "semestre": {
+    "tabla": "A4",
+    "uso": "entrada: dentro de cada rango el semestre es uniforme; '7 o más' se acota a 7-10",
+    "categorias": [
+      { "etiqueta": "1-2", "min": 1, "max": 2, "porcentaje": 21.5 },
+      { "etiqueta": "3-4", "min": 3, "max": 4, "porcentaje": 13.3 },
+      { "etiqueta": "5-6", "min": 5, "max": 6, "porcentaje": 14.8 },
+      { "etiqueta": "7 o más", "min": 7, "max": 10, "porcentaje": 50.4 }
+    ]
+  },
+  "n_asignaturas": {
+    "tabla": "A6",
+    "uso": "entrada: dentro de cada rango es uniforme; '8 o más' se toma como 8",
+    "categorias": [
+      { "etiqueta": "1-3", "min": 1, "max": 3, "porcentaje": 6.7 },
+      { "etiqueta": "4-5", "min": 4, "max": 5, "porcentaje": 70.4 },
+      { "etiqueta": "6-7", "min": 6, "max": 7, "porcentaje": 18.5 },
+      { "etiqueta": "8 o más", "min": 8, "max": 8, "porcentaje": 4.4 }
+    ]
+  },
+  "rehizo_seleccion": {
+    "tabla": "A9",
+    "n": 135,
+    "uso": "OBJETIVO de calibración del flujo A (veces que rehizo la selección por cruces = r_traslape)",
+    "categorias": [
+      { "etiqueta": "0", "min": 0, "max": 0, "porcentaje": 11.9 },
+      { "etiqueta": "1", "min": 1, "max": 1, "porcentaje": 15.6 },
+      { "etiqueta": "2", "min": 2, "max": 2, "porcentaje": 30.4 },
+      { "etiqueta": "3", "min": 3, "max": 3, "porcentaje": 23.0 },
+      { "etiqueta": "4", "min": 4, "max": 4, "porcentaje": 1.5 },
+      { "etiqueta": "5 o más", "min": 5, "max": null, "porcentaje": 17.8 }
+    ]
+  },
+  "tiempo_plataforma": {
+    "tabla": "A11",
+    "n": 135,
+    "uso": "OBJETIVO de calibración del flujo A (t_total_s en minutos). Un tiempo cae en la primera categoría cuyo límite superior lo cubre.",
+    "categorias": [
+      { "etiqueta": "menos de 15 min", "max_minutos": 15, "max_inclusivo": false, "porcentaje": 3.0 },
+      { "etiqueta": "15-30 min", "max_minutos": 30, "max_inclusivo": true, "porcentaje": 47.4 },
+      { "etiqueta": "31-60 min", "max_minutos": 60, "max_inclusivo": true, "porcentaje": 35.6 },
+      { "etiqueta": "1-2 h", "max_minutos": 120, "max_inclusivo": true, "porcentaje": 9.6 },
+      { "etiqueta": "más de 2 h", "max_minutos": null, "max_inclusivo": true, "porcentaje": 4.4 }
+    ]
+  },
+  "perdio_cupo": {
+    "tabla": "A13",
+    "n": 135,
+    "uso": "OBJETIVO de calibración del flujo A (perdió o casi perdió cupo mientras resolvía un cruce)",
+    "categorias": [
+      { "id": "si", "etiqueta": "sí", "porcentaje": 39.3 },
+      { "id": "casi", "etiqueta": "casi", "porcentaje": 17.8 },
+      { "id": "no", "etiqueta": "no", "porcentaje": 43.0 }
+    ]
+  },
+  "accion_materia_afectada": {
+    "tabla": "A14",
+    "n": 80,
+    "uso": "referencia: el modelo solo usa el 31,3 % de 'la aplazó' como deferOnExhaustProbability por defecto",
+    "categorias": [
+      { "id": "otro_grupo", "etiqueta": "otro grupo menos conveniente", "porcentaje": 43.8 },
+      { "id": "aplazo", "etiqueta": "la aplazó", "porcentaje": 31.3 },
+      { "id": "cambio_por_otra", "etiqueta": "la cambió por otra", "porcentaje": 15.0 },
+      { "id": "otra", "etiqueta": "otra", "porcentaje": 10.0 }
+    ]
+  },
+  "supuestos": {
+    "preferencia_de_jornada": "La consulta no la preguntó; es el parámetro population.preference de la configuración."
+  }
+}

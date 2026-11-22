@@ -1,0 +1,61 @@
+{
+  "seed": 42,
+  "profiles": 500,
+  "calibrationFile": "",
+  "offer": {
+    "file": null,
+    "slackFactor": 1.1,
+    "maxCredits": 20,
+    "coursesPerSemester": 5,
+    "sharedCoursesPerSemester": 2,
+    "sharedUpToSemester": 4,
+    "creditsMin": 2,
+    "creditsMax": 4,
+    "minSections": 2,
+    "maxSections": 6,
+    "targetGroupSize": 25,
+    "minSeatsPerSection": 2,
+    "sectionShift": { "manana": 0.40, "tarde": 0.30, "noche": 0.30 },
+    "shiftAlignment": 0.85,
+    "popularSeatShare": 0.7,
+    "seatUnevenness": 0.7
+  },
+  "population": {
+    "preference": { "manana": 0.40, "tarde": 0.25, "noche": 0.35 }
+  },
+  "arrivals": {
+    "windowStartSeconds": [0, 86400, 172800],
+    "windowWeights": [1, 1, 1],
+    "arrivalsPerMinute": 6.0
+  },
+  "platform": {
+    "seatEventLatencySeconds": 2.0
+  },
+  "engine": {
+    "solver": "forward-checking",
+    "maxResults": 50,
+    "maxAlternatives": 5,
+    "timeMode": "measured",
+    "pickBestProbability": 0.7,
+    "pickTop": 5
+  },
+  "times": {
+    "browseCourse": { "meanSeconds": 150, "cv": 0.6 },
+    "chooseAndSubmit": { "meanSeconds": 90, "cv": 0.6 },
+    "readRejection": { "meanSeconds": 60, "cv": 0.6 },
+    "withdraw": { "meanSeconds": 45, "cv": 0.5 },
+    "submitChosen": { "meanSeconds": 20, "cv": 0.5 },
+    "reviewCombinations": { "meanSeconds": 120, "cv": 0.6 },
+    "reviewAlternatives": { "meanSeconds": 75, "cv": 0.6 },
+    "confirm": { "meanSeconds": 90, "cv": 0.5 }
+  },
+  "behavior": {
+    "preferenceStrength": 2.0,
+    "clashAwareness": 0.15,
+    "deferOnExhaustProbability": 0.31,
+    "maxRetreatsPerCourse": 2,
+    "maxSubmissions": 60,
+    "maxAlternativeRounds": 10,
+    "nearLossSeats": 2
+  }
+}
