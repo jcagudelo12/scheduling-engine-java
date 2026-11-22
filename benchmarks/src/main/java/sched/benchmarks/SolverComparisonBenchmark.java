@@ -85,7 +85,7 @@ public class SolverComparisonBenchmark {
     };
 
     /** Penaliza franjas que empiezan antes de 08:00 o terminan después de 18:00, más un término por grupo. */
-    private static final SectionCost ENROLLMENT_COST = section -> {
+    static final SectionCost ENROLLMENT_COST = section -> {
         long cost = Math.floorMod(section.id().value().hashCode(), 7);
         for (TimeSlot t : section.slots()) {
             if (t.start() < 8 * 60) {
@@ -99,7 +99,7 @@ public class SolverComparisonBenchmark {
     };
 
     /** 7 cursos × 6 grupos, 2 franjas de 120 min por grupo, generados con semilla fija. */
-    private static Problem enrollmentProblem(int maxResults, SectionCost cost) {
+    static Problem enrollmentProblem(int maxResults, SectionCost cost) {
         Random random = new Random(42);
         List<Section> candidates = new ArrayList<>();
         List<CourseId> courseIds = new ArrayList<>();
@@ -119,7 +119,7 @@ public class SolverComparisonBenchmark {
         return new Problem(courseIds, candidates, maxResults, cost);
     }
 
-    private static Problem regularProblem() {
+    static Problem regularProblem() {
         List<Section> candidates = new ArrayList<>();
         List<CourseId> courseIds = new ArrayList<>();
         for (int c = 0; c < 6; c++) {
@@ -138,7 +138,7 @@ public class SolverComparisonBenchmark {
     }
 
     /** Los 6 primeros cursos nunca se cruzan entre sí; los grupos del séptimo ocupan toda la semana. */
-    private static Problem noSolutionProblem() {
+    static Problem noSolutionProblem() {
         List<Section> candidates = new ArrayList<>();
         List<CourseId> courseIds = new ArrayList<>();
         for (int c = 0; c < 7; c++) {
