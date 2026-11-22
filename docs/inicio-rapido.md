@@ -178,6 +178,11 @@ El motor se configura con variables de entorno (ver
 | `SCHED_NATS_SUBJECT_PREFIX` | `sched` | Prefijo de los sujetos de NATS |
 | `SCHED_MAX_COMBINATIONS` | `200` | Combinaciones máximas por respuesta |
 | `SCHED_MAX_ALTERNATIVES` | `5` | Alternativas máximas por respuesta de `POST /alternatives` |
+| `SCHED_MAX_COURSES` | `12` | Cursos máximos por solicitud (también elementos de `selection` y `enrolled`); más es `400` |
+| `SCHED_MAX_AVOID` | `42` | Ventanas `avoid` máximas por solicitud |
+| `SCHED_MAX_ID_LENGTH` | `64` | Longitud máxima de un id (estudiante, curso, grupo) |
+| `SCHED_MAX_BODY_BYTES` | `65536` | Tamaño máximo del cuerpo HTTP; más es `413` |
+| `SCHED_SEARCH_TIMEOUT_MS` | `150` | Tiempo máximo de cada búsqueda en milisegundos; `0` lo desactiva. Al vencer, la respuesta trae `"complete": false` ([ADR 0009](adr/0009-tiempo-maximo-de-la-busqueda.md)) |
 | `SCHED_SOLVER` | `forward-checking` | Algoritmo de búsqueda: `forward-checking` o `backtracking` (línea base) |
 
 El simulador usa `SCHED_INGEST_URL` (por defecto `localhost:50051`) para saber dónde está la

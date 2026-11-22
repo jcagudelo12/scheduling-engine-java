@@ -55,7 +55,8 @@ public class AlternativesController {
             int maxCredits,
             boolean selectionValid,
             ConflictsDto conflicts,
-            List<AlternativeDto> alternatives) {
+            List<AlternativeDto> alternatives,
+            boolean complete) {
     }
 
     public record ChoiceDto(String course, String section) {
@@ -76,22 +77,30 @@ public class AlternativesController {
     }
 
     private final SuggestAlternatives suggest;
+    private final RequestLimits limits;
 
+    /** Con los límites por defecto de {@link RequestLimits#DEFAULTS}. */
     public AlternativesController(SuggestAlternatives suggest) {
+        this(suggest, RequestLimits.DEFAULTS);
+    }
+
+    public AlternativesController(SuggestAlternatives suggest, RequestLimits limits) {
         this.suggest = suggest;
+        this.limits = limits;
     }
 
     @PostMapping("/alternatives")
     public AlternativesResponse alternatives(@RequestBody AlternativesRequestDto request) throws AppException {
-        if (request.eligibleCourses() == null) {
-            throw new InvalidRequestException("falta eligible_courses");
+        if (request == null) {
+            throw new InvalidRequestException("falta el cuerpo de la solicitud");
         }
         StudentContext student = new StudentContext(
-                new StudentId(request.studentId()),
-                request.eligibleCourses().stream().map(CourseId::new).toList(),
-                new Preferences(CombinationsController.parseAvoid(request.avoid())));
-        Alternatives result = suggest.execute(
-                student, parseSelection(request.selection()), parseEnrolled(request.enrolled()));
+                new StudentId(RequestValidation.id("student_id", request.studentId(), limits)),
+                RequestValidation.idList("eligible_courses", request.eligibleCourses(), limits.maxCourses(), limits)
+                        .stream().map(CourseId::new).toList(),
+                new Preferences(CombinationsController.parseAvoid(request.avoid(), limits)));
+        Alternatives result = suggest.execute(student, parseSelection(request.selection()),
+                parseEnrolled(request.enrolled()));
         return new AlternativesResponse(
                 result.catalogSeq(),
                 result.stale(),
@@ -103,7 +112,8 @@ public class AlternativesController {
                         result.conflicts().clashes().stream()
                                 .map(c -> new ClashDto(toDto(c.first()), toDto(c.second())))
                                 .toList()),
-                result.alternatives().stream().map(AlternativesController::toDto).toList());
+                result.alternatives().stream().map(AlternativesController::toDto).toList(),
+                result.complete());
     }
 
     @ExceptionHandler(InvalidRequestException.class)
@@ -127,29 +137,16 @@ public class AlternativesController {
         return HttpErrors.general(error);
     }
 
-    private static Map<CourseId, SectionId> parseSelection(Map<String, String> selection) {
+    private Map<CourseId, SectionId> parseSelection(Map<String, String> selection) {
         Map<CourseId, SectionId> parsed = new HashMap<>();
-        if (selection == null) {
-            return parsed;
-        }
-        selection.forEach((course, section) -> {
-            if (course == null || section == null || section.isBlank()) {
-                throw new InvalidRequestException("selection[" + course + "]: falta el grupo");
-            }
-            parsed.put(new CourseId(course), new SectionId(section));
-        });
+        RequestValidation.optionalIdMap("selection", selection, limits.maxCourses(), limits)
+                .forEach((course, section) -> parsed.put(new CourseId(course), new SectionId(section)));
         return parsed;
     }
 
-    private static Set<SectionId> parseEnrolled(List<String> enrolled) {
+    private Set<SectionId> parseEnrolled(List<String> enrolled) {
         Set<SectionId> parsed = new HashSet<>();
-        if (enrolled == null) {
-            return parsed;
-        }
-        for (String section : enrolled) {
-            if (section == null || section.isBlank()) {
-                throw new InvalidRequestException("enrolled: grupo vacío");
-            }
+        for (String section : RequestValidation.optionalIdList("enrolled", enrolled, limits.maxCourses(), limits)) {
             parsed.add(new SectionId(section));
         }
         return parsed;

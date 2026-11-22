@@ -16,9 +16,26 @@
     <dependencies>
         <dependency><groupId>sched</groupId><artifactId>sched-application</artifactId></dependency>
         <dependency><groupId>org.springframework</groupId><artifactId>spring-webmvc</artifactId></dependency>
+        <!-- El filtro del tamaño del cuerpo; en ejecución lo aporta Tomcat. -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- MockMvc independiente (sin levantar Spring Boot) para los casos que dependen de HTTP. -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>tools.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

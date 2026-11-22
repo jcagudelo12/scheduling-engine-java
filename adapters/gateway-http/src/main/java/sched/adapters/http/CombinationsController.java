@@ -35,9 +35,17 @@ public class CombinationsController {
     public record StudentContextDto(String studentId, List<String> eligibleCourses, List<SlotDto> avoid) {
     }
 
-    /** {@code maxCredits} es 0 cuando el periodo no tiene tope de créditos. */
+    /**
+     * {@code maxCredits} es 0 cuando el periodo no tiene tope de créditos. {@code complete} es
+     * {@code false} si la búsqueda se cortó por el tiempo máximo.
+     */
     public record CombinationsResponse(
-            long catalogSeq, boolean stale, int totalCredits, int maxCredits, List<ScheduleDto> schedules) {
+            long catalogSeq,
+            boolean stale,
+            int totalCredits,
+            int maxCredits,
+            List<ScheduleDto> schedules,
+            boolean complete) {
     }
 
     /** Cuerpo del 422 cuando los cursos pedidos superan el tope de créditos. */
@@ -65,24 +73,36 @@ public class CombinationsController {
     }
 
     private final GenerateCombinations generate;
+    private final RequestLimits limits;
 
+    /** Con los límites por defecto de {@link RequestLimits#DEFAULTS}. */
     public CombinationsController(GenerateCombinations generate) {
+        this(generate, RequestLimits.DEFAULTS);
+    }
+
+    public CombinationsController(GenerateCombinations generate, RequestLimits limits) {
         this.generate = generate;
+        this.limits = limits;
     }
 
     @PostMapping("/combinations")
     public CombinationsResponse combinations(@RequestBody StudentContextDto request) throws AppException {
+        if (request == null) {
+            throw new InvalidRequestException("falta el cuerpo de la solicitud");
+        }
         StudentContext student = new StudentContext(
-                new StudentId(request.studentId()),
-                request.eligibleCourses().stream().map(CourseId::new).toList(),
-                new Preferences(parseAvoid(request.avoid())));
+                new StudentId(RequestValidation.id("student_id", request.studentId(), limits)),
+                RequestValidation.idList("eligible_courses", request.eligibleCourses(), limits.maxCourses(), limits)
+                        .stream().map(CourseId::new).toList(),
+                new Preferences(parseAvoid(request.avoid(), limits)));
         Combinations result = generate.execute(student);
         return new CombinationsResponse(
                 result.catalogSeq(),
                 result.stale(),
                 result.totalCredits(),
                 result.maxCredits(),
-                result.schedules().stream().map(CombinationsController::toDto).toList());
+                result.schedules().stream().map(CombinationsController::toDto).toList(),
+                result.complete());
     }
 
     @ExceptionHandler(InvalidRequestException.class)
@@ -101,10 +121,11 @@ public class CombinationsController {
         return HttpErrors.general(error);
     }
 
-    static List<TimeSlot> parseAvoid(List<SlotDto> avoid) {
+    static List<TimeSlot> parseAvoid(List<SlotDto> avoid, RequestLimits limits) {
         if (avoid == null) {
             return List.of();
         }
+        RequestValidation.checkSize("avoid", avoid.size(), limits.maxAvoid());
         List<TimeSlot> windows = new ArrayList<>();
         for (int i = 0; i < avoid.size(); i++) {
             SlotDto window = avoid.get(i);

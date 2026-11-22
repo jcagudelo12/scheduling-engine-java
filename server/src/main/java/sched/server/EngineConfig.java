@@ -3,6 +3,7 @@ package sched.server;
 import io.grpc.protobuf.services.ProtoReflectionServiceV1;
 import io.nats.client.Connection;
 import io.nats.client.Nats;
+import java.time.Duration;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -11,8 +12,11 @@ import org.springframework.context.annotation.Configuration;
 import sched.adapters.grpc.catalog.CatalogGrpcService;
 import sched.adapters.grpc.events.CatalogEventsGrpcService;
 import sched.adapters.http.AlternativesController;
+import sched.adapters.http.BodySizeLimitFilter;
 import sched.adapters.http.CombinationsController;
 import sched.adapters.http.HealthController;
+import sched.adapters.http.HttpExceptionHandler;
+import sched.adapters.http.RequestLimits;
 import sched.adapters.nats.CatalogFollower;
 import sched.adapters.nats.JetStreamCatalogLog;
 import sched.application.ApplyLogEntry;
@@ -92,18 +96,57 @@ class EngineConfig {
         };
     }
 
+    /** Límites de tamaño de las solicitudes de consulta (valores por defecto en application.properties). */
+    @Bean
+    RequestLimits requestLimits(
+            @Value("${sched.limits.max-courses}") int maxCourses,
+            @Value("${sched.limits.max-avoid}") int maxAvoid,
+            @Value("${sched.limits.max-id-length}") int maxIdLength,
+            @Value("${sched.limits.max-body-bytes}") long maxBodyBytes) {
+        return new RequestLimits(maxCourses, maxAvoid, maxIdLength, maxBodyBytes);
+    }
+
+    /** Spring Boot lo registra solo como filtro del servlet. */
+    @Bean
+    BodySizeLimitFilter bodySizeLimitFilter(RequestLimits limits) {
+        return new BodySizeLimitFilter(limits.maxBodyBytes());
+    }
+
+    @Bean
+    HttpExceptionHandler httpExceptionHandler() {
+        return new HttpExceptionHandler();
+    }
+
     @Bean
     @ConditionalOnExpression(SERVES_QUERIES)
     CombinationsController combinationsController(
-            Solver solver, CatalogReplica replica, @Value("${sched.max-combinations}") int maxCombinations) {
-        return new CombinationsController(new GenerateCombinations(solver, replica, maxCombinations));
+            Solver solver,
+            CatalogReplica replica,
+            @Value("${sched.max-combinations}") int maxCombinations,
+            @Value("${sched.search-timeout-ms}") long timeoutMs,
+            RequestLimits limits) {
+        return new CombinationsController(
+                new GenerateCombinations(solver, replica, maxCombinations, searchTimeout(timeoutMs)), limits);
     }
 
     @Bean
     @ConditionalOnExpression(SERVES_QUERIES)
     AlternativesController alternativesController(
-            Solver solver, CatalogReplica replica, @Value("${sched.max-alternatives}") int maxAlternatives) {
-        return new AlternativesController(new SuggestAlternatives(solver, replica, maxAlternatives));
+            Solver solver,
+            CatalogReplica replica,
+            @Value("${sched.max-alternatives}") int maxAlternatives,
+            @Value("${sched.search-timeout-ms}") long timeoutMs,
+            RequestLimits limits) {
+        return new AlternativesController(
+                new SuggestAlternatives(solver, replica, maxAlternatives, searchTimeout(timeoutMs)), limits);
+    }
+
+    /** {@code SCHED_SEARCH_TIMEOUT_MS = 0} desactiva el tiempo máximo (ADR 0009). */
+    private static Duration searchTimeout(long millis) {
+        if (millis < 0) {
+            throw new IllegalArgumentException("SCHED_SEARCH_TIMEOUT_MS no puede ser negativo: " + millis);
+        }
+        return millis == 0 ? null : Duration.ofMillis(millis);
     }
 
     // gRPC de ingesta, según el rol.

@@ -17,6 +17,16 @@ final class HttpErrors {
         return ResponseEntity.badRequest().body(new InvalidRequestDto("invalid_request", message));
     }
 
+    /** 413: el cuerpo supera {@code SCHED_MAX_BODY_BYTES}. */
+    static ResponseEntity<InvalidRequestDto> payloadTooLarge(long maxBytes) {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                .body(new InvalidRequestDto("payload_too_large", payloadTooLargeMessage(maxBytes)));
+    }
+
+    static String payloadTooLargeMessage(long maxBytes) {
+        return "el cuerpo de la solicitud supera el máximo de " + maxBytes + " bytes";
+    }
+
     static ResponseEntity<CreditLimitErrorDto> creditLimit(AppException.CreditLimitExceeded error) {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(new CreditLimitErrorDto("credit_limit_exceeded", error.totalCredits(), error.maxCredits()));

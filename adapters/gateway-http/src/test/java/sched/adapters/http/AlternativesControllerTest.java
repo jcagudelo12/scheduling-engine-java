@@ -100,6 +100,7 @@ class AlternativesControllerTest {
         var response = controller.alternatives(request(Map.of("MAT", "MAT-01", "FIS", "FIS-01")));
 
         assertEquals(7, response.catalogSeq());
+        assertTrue(response.complete());
         assertEquals(false, response.selectionValid());
         assertEquals(List.of(new AlternativesController.ChoiceDto("MAT", "MAT-01")),
                 response.conflicts().withoutSeats());

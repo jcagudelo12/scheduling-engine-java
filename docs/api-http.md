@@ -47,6 +47,7 @@ Content-Type: application/json
   "stale": false,
   "total_credits": 7,
   "max_credits": 18,
+  "complete": true,
   "schedules": [
     {
       "penalty": 0,
@@ -76,6 +77,7 @@ Content-Type: application/json
 | `stale` | `true` si la réplica podría no estar al día. Ver [Cuándo `stale` es `true`](#cuándo-stale-es-true) |
 | `total_credits` | Suma de créditos de los cursos pedidos (sin contar repetidos). Un curso sin créditos informados por la institución cuenta 0 |
 | `max_credits` | Tope de créditos del periodo. `0` significa que no hay tope |
+| `complete` | `true` si la búsqueda terminó y el resultado es exacto. `false` si venció el [tiempo máximo de búsqueda](#tiempo-máximo-de-búsqueda). Ver abajo |
 | `schedules` | Combinaciones compatibles; como máximo `SCHED_MAX_COMBINATIONS` (por defecto 200) |
 | `schedules[].penalty` | Penalización de la combinación según `avoid`: número de franjas elegidas que caen en las ventanas a evitar. `0` si no hay `avoid` o no se incumple |
 | `schedules[].sections` | Un grupo por cada curso pedido |
@@ -98,6 +100,20 @@ Reglas del cálculo:
 - Las combinaciones salen **de menor a mayor `penalty`**, con empate por ids de grupo. Ver
   [Orden y penalización](#orden-y-penalización).
 
+### Tiempo máximo de búsqueda
+
+Cada búsqueda tiene un tiempo máximo (`SCHED_SEARCH_TIMEOUT_MS`, por defecto 150 ms; `0` lo
+desactiva; [ADR 0009](adr/0009-tiempo-maximo-de-la-busqueda.md)). Si vence antes de terminar, la
+respuesta sigue siendo `200` con lo encontrado hasta ese momento y `"complete": false`:
+
+- Cada combinación devuelta es válida (un grupo por curso, sin cruces).
+- **No está garantizado** que sean las mejores según `avoid`, ni que lleguen al máximo pedido;
+  puede incluso llegar `schedules` vacío aunque exista alguna combinación.
+- Con `"complete": true` el resultado es exacto, igual que sin tiempo máximo.
+
+El portal debería avisar al estudiante cuando `complete` es `false`: podría haber mejores
+combinaciones.
+
 ### Orden y penalización
 
 Las preferencias son restricciones suaves. Si E es el conjunto de ventanas de `avoid`, la
@@ -111,24 +127,40 @@ Con `avoid` se devuelven las `SCHED_MAX_COMBINATIONS` combinaciones de **menor p
 todas las posibles** (búsqueda exacta), no las primeras encontradas. Sin `avoid` todas tienen
 `penalty` 0 y el orden es el de ids de grupo.
 
+### Límites de la solicitud
+
+Acotan el trabajo que una sola solicitud puede pedir (la búsqueda crece de forma exponencial con
+los cursos). Los valores por defecto son los de un pregrado y se cambian con variables de entorno
+(ver [inicio rápido](inicio-rapido.md#configuración)):
+
+| Límite | Por defecto | Variable | Aplica a |
+|---|---|---|---|
+| Cursos por solicitud | 12 | `SCHED_MAX_COURSES` | `eligible_courses`; también `selection` y `enrolled` de `/alternatives` |
+| Ventanas a evitar | 42 | `SCHED_MAX_AVOID` | `avoid` |
+| Longitud de un id | 64 | `SCHED_MAX_ID_LENGTH` | `student_id`, cursos y grupos |
+| Tamaño del cuerpo | 65536 bytes (64 KiB) | `SCHED_MAX_BODY_BYTES` | Cuerpo HTTP completo |
+
+Los ids (estudiante, curso y grupo) deben ser no vacíos y usar solo letras ASCII, dígitos, `-`,
+`_` y `.`. Estar justo en el límite se acepta; excederlo es un `400` (o `413` para el cuerpo).
+
 ### Errores
 
 | Código | Cuándo | Cuerpo |
 |---|---|---|
-| `400` | El cuerpo no es JSON válido | JSON de error de Spring |
+| `400` | El cuerpo falta, no es JSON válido, o un campo tiene un tipo incorrecto (por ejemplo `eligible_courses` como texto) | `{ "error": "invalid_request", "message": "..." }` |
+| `400` | Falta `student_id` o `eligible_courses`, o son nulos o vacíos; un id con caracteres no permitidos o demasiado largo; se excede un [límite](#límites-de-la-solicitud) | `{ "error": "invalid_request", "message": "falta student_id" }` |
 | `400` | Una ventana de `avoid` es inválida (día desconocido o ausente, `end_minute` no mayor que `start_minute`, fuera de `0..1440`) | `{ "error": "invalid_request", "message": "avoid[0]: ..." }` |
+| `413` | El cuerpo supera `SCHED_MAX_BODY_BYTES`. Se corta sin procesarlo | `{ "error": "payload_too_large", "message": "..." }` |
 | `422` | Los créditos de los cursos pedidos superan el tope del periodo. No se buscó | `{ "error": "credit_limit_exceeded", "total_credits": 21, "max_credits": 18 }` |
 | `503` | El motor aún no recibió ninguna carga completa del catálogo | `el catálogo aún no se ha cargado` (texto) |
 | `503` | Un puerto de salida no está disponible | Mensaje del error (texto) |
 | `500` | Error interno, incluido un historial inconsistente | Mensaje del error (texto) o JSON de Spring |
 | `405` | Método distinto de `POST` | |
 
-Limitaciones conocidas (por corregir):
+Un cuerpo malo (campo ausente, tipo incorrecto, JSON roto) nunca es un `500`.
 
-- Si falta `student_id` o `eligible_courses` la respuesta es `500` y no `400`, porque todavía
-  no se validan los campos.
-- Con `eligible_courses` vacío la respuesta trae una combinación sin grupos
-  (`"schedules": [{"sections": []}]`).
+Limitación conocida (por corregir): con `eligible_courses` vacío la respuesta trae una
+combinación sin grupos (`"schedules": [{"sections": []}]`).
 
 ### Cuándo `stale` es `true`
 
@@ -195,6 +227,7 @@ existe en el catálogo cuenta como sin cupo.
   "total_credits": 7,
   "max_credits": 18,
   "selection_valid": false,
+  "complete": true,
   "conflicts": {
     "without_seats": [{ "course": "MAT101", "section": "MAT101-01" }],
     "clashes": []
@@ -226,6 +259,7 @@ existe en el catálogo cuenta como sin cupo.
 | Campo | Descripción |
 |---|---|
 | `catalog_seq`, `stale`, `total_credits`, `max_credits` | Igual que en `/combinations` |
+| `complete` | `true` si la búsqueda terminó y las alternativas son exactas; `false` si venció el [tiempo máximo de búsqueda](#tiempo-máximo-de-búsqueda): las alternativas son válidas pero pueden no ser las mejores |
 | `selection_valid` | `true` si la selección cubre todos los cursos, todos sus grupos tienen cupo y no se cruzan. Entonces la primera alternativa es la propia selección (`distance` 0) |
 | `conflicts.without_seats` | Grupos de la selección sin cupo o inexistentes |
 | `conflicts.clashes` | Pares `{first, second}` de grupos de la selección con cupo que se cruzan entre sí |
@@ -254,9 +288,10 @@ penalización 0. La búsqueda es exacta: son las mejores de todas las posibles.
 
 ### Errores
 
-Los de [`/combinations`](#errores): `400` (cuerpo inválido, `avoid` inválido, `selection` con un
-curso no pedido, un grupo de otro curso o un grupo vacío; cuerpo
-`{ "error": "invalid_request", "message": "..." }`), `422` por créditos, `503` y `500`.
+Los de [`/combinations`](#errores): `400` (cuerpo inválido, campos ausentes, límites excedidos,
+`avoid` inválido, `selection` con un curso no pedido, un grupo de otro curso o un grupo vacío;
+cuerpo `{ "error": "invalid_request", "message": "..." }`), `413`, `422` por créditos, `503` y
+`500`. Los límites de `selection` y `enrolled` son los de [cursos](#límites-de-la-solicitud).
 
 ### Ejemplo con curl
 

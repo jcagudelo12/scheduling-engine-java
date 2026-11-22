@@ -25,6 +25,7 @@ import sched.domain.SectionSeats;
 import sched.domain.TimeSlot;
 import sched.domain.Weekday;
 import sched.solver.Scored;
+import sched.solver.SearchResult;
 import sched.solver.Solver;
 
 /** Llama al controlador directamente, sin levantar Spring: no hay tráfico HTTP real. */
@@ -35,6 +36,7 @@ class CombinationsControllerTest {
 
     private final AtomicInteger searches = new AtomicInteger();
     private final List<sched.solver.Problem> problems = new ArrayList<>();
+    private boolean complete = true;
     private ApplyLogEntry replicaLog;
     private CombinationsController controller;
 
@@ -46,9 +48,9 @@ class CombinationsControllerTest {
             searches.incrementAndGet();
             problems.add(problem);
             // Una combinación con el único grupo cargado y costo según las preferencias.
-            return problem.candidates().isEmpty() ? List.of()
+            return new SearchResult(problem.candidates().isEmpty() ? List.of()
                     : List.of(new Scored(new Schedule(List.of(problem.candidates().getFirst())),
-                            problem.cost().of(problem.candidates().getFirst())));
+                            problem.cost().of(problem.candidates().getFirst()))), complete);
         };
         controller = new CombinationsController(new GenerateCombinations(solver, replica, 10));
     }
@@ -69,6 +71,15 @@ class CombinationsControllerTest {
         assertEquals(7, response.totalCredits());
         assertEquals(10, response.maxCredits());
         assertEquals(1, searches.get());
+    }
+
+    @Test
+    void responseTellsWhetherTheSearchWasComplete() throws Exception {
+        load(0);
+
+        assertTrue(controller.combinations(REQUEST).complete());
+        complete = false;
+        assertEquals(false, controller.combinations(REQUEST).complete());
     }
 
     @Test
