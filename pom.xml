@@ -43,6 +43,7 @@
         <protobuf.version>4.36.2</protobuf.version>
         <jnats.version>2.26.3</jnats.version>
         <jmh.version>1.37</jmh.version>
+        <jqwik.version>1.10.2</jqwik.version>
     </properties>
 
     <dependencyManagement>
@@ -75,6 +76,11 @@
                 <groupId>io.nats</groupId>
                 <artifactId>jnats</artifactId>
                 <version>${jnats.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.jqwik</groupId>
+                <artifactId>jqwik</artifactId>
+                <version>${jqwik.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.openjdk.jmh</groupId>
