@@ -163,4 +163,13 @@ class HttpLayerTest {
     void theFilterRejectsNonPositiveLimits() {
         assertThrows(IllegalArgumentException.class, () -> new BodySizeLimitFilter(0));
     }
+
+    @Test
+    void emptyEligibleCoursesAnswer400OnBothEndpoints() throws Exception {
+        assert400(send("/combinations", "{\"student_id\":\"s1\",\"eligible_courses\":[]}"));
+        assert400(send("/alternatives", "{\"student_id\":\"s1\",\"eligible_courses\":[]}"));
+        var body = send("/combinations", "{\"student_id\":\"s1\",\"eligible_courses\":[]}")
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertTrue(body.contains("se requiere al menos una asignatura"), body);
+    }
 }

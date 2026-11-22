@@ -25,13 +25,24 @@ final class RequestIdentity {
         return verified.studentId();
     }
 
+    /**
+     * Los cursos habilitados, de al menos uno: sin asignaturas no hay nada que combinar, y en modo
+     * {@code jwt} un token con {@code courses} vacío también es {@code 400} (el token es válido, la
+     * solicitud no tiene sentido), no {@code 401}.
+     */
     static List<String> eligibleCourses(List<String> fromBody, VerifiedStudent verified, RequestLimits limits) {
+        List<String> courses;
         if (verified == null) {
-            return RequestValidation.idList("eligible_courses", fromBody, limits.maxCourses(), limits);
+            courses = RequestValidation.idList("eligible_courses", fromBody, limits.maxCourses(), limits);
+        } else {
+            if (fromBody != null && !new HashSet<>(fromBody).equals(new HashSet<>(verified.eligibleCourses()))) {
+                throw new InvalidRequestException("eligible_courses no coincide con los cursos del token");
+            }
+            courses = verified.eligibleCourses();
         }
-        if (fromBody != null && !new HashSet<>(fromBody).equals(new HashSet<>(verified.eligibleCourses()))) {
-            throw new InvalidRequestException("eligible_courses no coincide con los cursos del token");
+        if (courses.isEmpty()) {
+            throw new InvalidRequestException("se requiere al menos una asignatura");
         }
-        return verified.eligibleCourses();
+        return courses;
     }
 }
