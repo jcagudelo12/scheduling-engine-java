@@ -40,6 +40,8 @@ Content-Type: application/json
 {
   "catalog_seq": 1,
   "stale": false,
+  "total_credits": 7,
+  "max_credits": 18,
   "schedules": [
     {
       "sections": [
@@ -66,6 +68,8 @@ Content-Type: application/json
 |---|---|
 | `catalog_seq` | Versión del catálogo con que se calculó la respuesta. Es el mismo `seq` que asigna la institución, así que ambos lados saben a qué estado corresponde ([ADR 0003](adr/0003-replica-del-catalogo.md)) |
 | `stale` | `true` si la réplica podría no estar al día. Ver [Cuándo `stale` es `true`](#cuándo-stale-es-true) |
+| `total_credits` | Suma de créditos de los cursos pedidos (sin contar repetidos). Un curso sin créditos informados por la institución cuenta 0 |
+| `max_credits` | Tope de créditos del periodo. `0` significa que no hay tope |
 | `schedules` | Combinaciones compatibles; como máximo `SCHED_MAX_COMBINATIONS` (por defecto 200) |
 | `schedules[].sections` | Un grupo por cada curso pedido |
 | `section_id`, `course_id` | Identificadores del grupo y del curso, tal como los envía la institución |
@@ -73,6 +77,12 @@ Content-Type: application/json
 | `slots[].start_minute`, `end_minute` | Minutos desde la medianoche. La franja es `[inicio, fin)`: 360–480 es de 06:00 a 08:00, y una clase que termina a las 08:00 no se cruza con otra que empieza a las 08:00 |
 
 Reglas del cálculo:
+
+- **Los créditos se verifican antes de buscar.** Dependen de los cursos y no de los grupos:
+  si la suma de créditos de `eligible_courses` supera `max_credits`, no se hace la búsqueda y la
+  respuesta es `422` (ver [Errores](#errores)). La suma igual al tope se acepta. El tope y los
+  créditos de cada curso los define la institución en la carga completa
+  ([contrato](contrato-institucion.md#créditos-y-reglas-del-periodo)).
 
 - Solo se consideran grupos con **cupo disponible** (mayor que 0). Si un cambio deja un grupo en
   0, deja de aparecer en la siguiente respuesta.
@@ -87,6 +97,7 @@ Reglas del cálculo:
 | Código | Cuándo | Cuerpo |
 |---|---|---|
 | `400` | El cuerpo no es JSON válido | JSON de error de Spring |
+| `422` | Los créditos de los cursos pedidos superan el tope del periodo. No se buscó | `{ "error": "credit_limit_exceeded", "total_credits": 21, "max_credits": 18 }` |
 | `503` | El motor aún no recibió ninguna carga completa del catálogo | `el catálogo aún no se ha cargado` (texto) |
 | `503` | Un puerto de salida no está disponible | Mensaje del error (texto) |
 | `500` | Error interno, incluido un historial inconsistente | Mensaje del error (texto) o JSON de Spring |

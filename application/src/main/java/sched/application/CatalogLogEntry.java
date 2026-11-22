@@ -1,7 +1,9 @@
 package sched.application;
 
 import java.util.List;
+import sched.domain.Course;
 import sched.domain.CatalogEvent;
+import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
 
 /**
@@ -12,10 +14,17 @@ import sched.domain.SectionSeats;
  */
 public sealed interface CatalogLogEntry {
 
-    /** Carga completa: reemplaza el catálogo. */
-    record Snapshot(long seq, List<SectionSeats> sections) implements CatalogLogEntry {
+    /** Carga completa: reemplaza el catálogo, los créditos y las reglas del periodo. */
+    record Snapshot(long seq, List<SectionSeats> sections, List<Course> courses, EnrollmentRules rules)
+            implements CatalogLogEntry {
         public Snapshot {
             sections = List.copyOf(sections);
+            courses = List.copyOf(courses);
+        }
+
+        /** Carga sin créditos ni reglas. */
+        public Snapshot(long seq, List<SectionSeats> sections) {
+            this(seq, sections, List.of(), EnrollmentRules.NONE);
         }
     }
 

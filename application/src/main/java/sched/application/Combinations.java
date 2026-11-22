@@ -8,6 +8,9 @@ import sched.domain.Schedule;
  *
  * @param catalogSeq {@code seq} del catálogo usado, definido por la institución
  * @param stale {@code true} si la réplica podía no estar al día (ADR 0003)
+ * @param totalCredits suma de créditos de los cursos pedidos (los de crédito desconocido cuentan 0)
+ * @param maxCredits tope de créditos del periodo; {@code 0} si no hay tope
  */
-public record Combinations(long catalogSeq, boolean stale, List<Schedule> schedules) {
+public record Combinations(
+        long catalogSeq, boolean stale, int totalCredits, int maxCredits, List<Schedule> schedules) {
 }

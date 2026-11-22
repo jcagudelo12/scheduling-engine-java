@@ -1,6 +1,7 @@
 package sched.domain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,5 +91,60 @@ class CatalogTest {
                 new SectionSeats(section("MAT-02", "MAT"), 3)));
 
         assertEquals(List.of("MAT-02"), openIds(catalog, "MAT"));
+    }
+
+    @Test
+    void creditsAndRulesComeFromTheFullLoad() {
+        Catalog catalog = Catalog.load(1,
+                List.of(new SectionSeats(section("MAT-01", "MAT"), 5)),
+                List.of(new Course(new CourseId("MAT"), 4), new Course(new CourseId("FIS"), 3)),
+                new EnrollmentRules(12));
+
+        assertEquals(4, catalog.creditsOf(new CourseId("MAT")));
+        assertEquals(12, catalog.rules().maxCredits());
+        assertEquals(7, catalog.totalCredits(List.of(new CourseId("MAT"), new CourseId("FIS"))));
+    }
+
+    @Test
+    void courseWithoutKnownCreditsCountsZeroAndRepeatedCountOnce() {
+        Catalog catalog = Catalog.load(1, List.of(), List.of(new Course(new CourseId("MAT"), 4)),
+                EnrollmentRules.NONE);
+
+        assertEquals(0, catalog.creditsOf(new CourseId("ART")));
+        assertEquals(4, catalog.totalCredits(List.of(new CourseId("MAT"), new CourseId("ART"), new CourseId("MAT"))));
+    }
+
+    @Test
+    void loadWithoutRulesHasNoCreditLimit() {
+        Catalog catalog = Catalog.load(1, List.of());
+
+        assertEquals(EnrollmentRules.NONE, catalog.rules());
+        assertFalse(catalog.rules().exceedsCreditLimit(1_000));
+    }
+
+    @Test
+    void eventsDoNotChangeCreditsOrRules() throws Exception {
+        Catalog catalog = Catalog.load(1, List.of(new SectionSeats(section("MAT-01", "MAT"), 5)),
+                List.of(new Course(new CourseId("MAT"), 4)), new EnrollmentRules(10));
+
+        catalog.apply(seats(2, "MAT-01", 0));
+        catalog.apply(new CatalogEvent(3, new CatalogChange.SectionRemoved(new SectionId("MAT-01"))));
+
+        assertEquals(4, catalog.creditsOf(new CourseId("MAT")));
+        assertEquals(10, catalog.rules().maxCredits());
+    }
+
+    @Test
+    void rulesAndCoursesRejectNegativeValues() {
+        assertThrows(IllegalArgumentException.class, () -> new EnrollmentRules(-1));
+        assertThrows(IllegalArgumentException.class, () -> new Course(new CourseId("MAT"), -1));
+    }
+
+    @Test
+    void creditLimitIsInclusive() {
+        EnrollmentRules rules = new EnrollmentRules(10);
+
+        assertFalse(rules.exceedsCreditLimit(10));
+        assertTrue(rules.exceedsCreditLimit(11));
     }
 }

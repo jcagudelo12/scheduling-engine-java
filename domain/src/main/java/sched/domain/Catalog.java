@@ -11,7 +11,10 @@ import java.util.TreeSet;
 
 /**
  * Réplica del catálogo que envía la institución (ADR 0003): todos los grupos del periodo
- * con sus cupos disponibles.
+ * con sus cupos disponibles, los créditos de cada asignatura y las reglas de matrícula.
+ *
+ * <p>Créditos y reglas llegan solo en la carga completa; los cambios incrementales (cupos,
+ * grupos) no los modifican.
  *
  * <p>No es segura para hilos; {@code CatalogReplica} controla el acceso concurrente.
  */
@@ -22,6 +25,8 @@ public final class Catalog {
 
     private long seq;
     private final Map<SectionId, Entry> entries = new HashMap<>();
+    private final Map<CourseId, Integer> credits = new HashMap<>();
+    private EnrollmentRules rules = EnrollmentRules.NONE;
     /**
      * Índice curso → grupos, para no recorrer todo el catálogo en cada consulta.
      * Los grupos van ordenados por id para que los resultados sean reproducibles.
@@ -32,13 +37,44 @@ public final class Catalog {
         this.seq = seq;
     }
 
-    /** Construye el catálogo a partir de una carga completa. */
+    /** Construye el catálogo a partir de una carga completa, sin créditos ni reglas. */
     public static Catalog load(long seq, Iterable<SectionSeats> sections) {
+        return load(seq, sections, List.of(), EnrollmentRules.NONE);
+    }
+
+    /** Construye el catálogo a partir de una carga completa. */
+    public static Catalog load(
+            long seq, Iterable<SectionSeats> sections, Iterable<Course> courses, EnrollmentRules rules) {
         Catalog catalog = new Catalog(seq);
         for (SectionSeats s : sections) {
             catalog.insert(s.section(), s.available());
         }
+        for (Course course : courses) {
+            catalog.credits.put(course.id(), course.credits());
+        }
+        catalog.rules = rules;
         return catalog;
+    }
+
+    public EnrollmentRules rules() {
+        return rules;
+    }
+
+    /** Créditos de la asignatura; {@code 0} si la institución no los informó. */
+    public int creditsOf(CourseId course) {
+        return credits.getOrDefault(course, 0);
+    }
+
+    /** Suma de créditos de las asignaturas indicadas; las repetidas cuentan una sola vez. */
+    public int totalCredits(Iterable<CourseId> courses) {
+        int total = 0;
+        Set<CourseId> seen = new HashSet<>();
+        for (CourseId course : courses) {
+            if (seen.add(course)) {
+                total += creditsOf(course);
+            }
+        }
+        return total;
     }
 
     public long seq() {

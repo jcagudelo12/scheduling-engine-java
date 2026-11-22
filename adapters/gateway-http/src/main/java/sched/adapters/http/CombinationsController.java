@@ -30,7 +30,13 @@ public class CombinationsController {
     public record StudentContextDto(String studentId, List<String> eligibleCourses) {
     }
 
-    public record CombinationsResponse(long catalogSeq, boolean stale, List<ScheduleDto> schedules) {
+    /** {@code maxCredits} es 0 cuando el periodo no tiene tope de créditos. */
+    public record CombinationsResponse(
+            long catalogSeq, boolean stale, int totalCredits, int maxCredits, List<ScheduleDto> schedules) {
+    }
+
+    /** Cuerpo del 422 cuando los cursos pedidos superan el tope de créditos. */
+    public record CreditLimitErrorDto(String error, int totalCredits, int maxCredits) {
     }
 
     public record ScheduleDto(List<SectionDto> sections) {
@@ -57,7 +63,16 @@ public class CombinationsController {
         return new CombinationsResponse(
                 result.catalogSeq(),
                 result.stale(),
+                result.totalCredits(),
+                result.maxCredits(),
                 result.schedules().stream().map(CombinationsController::toDto).toList());
+    }
+
+    /** Más específico que el manejador general: Spring elige este para el tope de créditos. */
+    @ExceptionHandler(AppException.CreditLimitExceeded.class)
+    public ResponseEntity<CreditLimitErrorDto> handleCreditLimit(AppException.CreditLimitExceeded error) {
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+                .body(new CreditLimitErrorDto("credit_limit_exceeded", error.totalCredits(), error.maxCredits()));
     }
 
     @ExceptionHandler(AppException.class)
@@ -68,6 +83,7 @@ public class CombinationsController {
                     HttpStatus.SERVICE_UNAVAILABLE;
             case AppException.PortFailure e -> HttpStatus.INTERNAL_SERVER_ERROR;
             case AppException.SequenceGap e -> HttpStatus.INTERNAL_SERVER_ERROR;
+            case AppException.CreditLimitExceeded e -> HttpStatus.UNPROCESSABLE_ENTITY;
         };
         return ResponseEntity.status(status).body(error.getMessage());
     }

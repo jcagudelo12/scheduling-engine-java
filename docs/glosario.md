@@ -9,6 +9,8 @@ Términos del proyecto. Entre paréntesis, el nombre que se usa en el código cu
 | **Grupo** (`Section`, `section_id`) | Una oferta concreta de un curso, con horario y cupo propios, por ejemplo `MAT101-01`. En el código y en el contrato se llama *section* |
 | **Franja** (`TimeSlot`, `slot`) | Bloque semanal de clase: día, minuto de inicio y minuto de fin. Es `[inicio, fin)`, así que una clase que termina a las 08:00 no se cruza con otra que empieza a las 08:00 |
 | **Cupo** (`capacity`, `available_seats`) | `capacity` es el cupo total; `available_seats` es lo que queda libre. Un grupo sin cupo libre no se ofrece |
+| **Créditos** (`credits`) | Valor de una asignatura, igual para todos sus grupos. Lo informa la institución en la carga completa; un curso sin créditos informados cuenta 0 |
+| **Tope de créditos** (`max_credits`, `EnrollmentRules`) | Máximo de créditos que un estudiante puede matricular en el periodo, parametrizado por la institución. 0 = sin tope. Se verifica antes de la búsqueda; si se supera, la API responde `422` |
 | **Cruce** (`overlaps`) | Dos franjas del mismo día que se superponen. Una combinación válida no tiene cruces |
 | **Combinación** (`Schedule`) | Un grupo por cada curso pedido, sin cruces entre ellos |
 | **Contexto del estudiante** (`StudentContext`) | Lo que el motor sabe del estudiante en una solicitud: su identificador y sus cursos habilitados. Llegará en un token firmado ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) |
