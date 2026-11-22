@@ -28,6 +28,9 @@ const TARGET = __ENV.TARGET || 'http://localhost:18080';
 const RATE = parseInt(__ENV.RATE || '1000');
 const RAMP = parseInt(__ENV.RAMP || '40');
 const HOLD = parseInt(__ENV.HOLD || '90');
+// Segundos iniciales de la meseta que se etiquetan phase = warm (calentamiento de la JVM) y quedan fuera de las
+// métricas de `hold`. 0 (por defecto) = toda la meseta es `hold`, como antes.
+const WARM = parseInt(__ENV.WARM || '0');
 const DOWN = parseInt(__ENV.DOWN || '20');
 const ALT_SHARE = parseFloat(__ENV.ALT_SHARE || '0.2');
 // Hora absoluta (ms) en que empieza la rampa; las fases y la ráfaga de cupos se miden contra ella.
@@ -36,6 +39,10 @@ const STORM_AT_MS = parseInt(__ENV.STORM_AT_MS || '0');
 const STORM_RATE = parseFloat(__ENV.STORM_RATE || '0');
 const PROBE_RATE = parseFloat(__ENV.PROBE_RATE || '100');
 const E1_SAMPLE = parseInt(__ENV.E1_SAMPLE || '3');
+
+// SLICE_S > 0: además etiqueta cada solicitud con slice = n.º de tramo de SLICE_S segundos desde START_MS, para ver la latencia en el tiempo
+// (http_req_duration{slice:N} en el resumen). 0 = sin etiqueta.
+const SLICE_S = parseInt(__ENV.SLICE_S || '0');
 
 const combos = new SharedArray('combos', () =>
   JSON.parse(open('./' + (__ENV.COMBOS_FILE || 'students.json'))).map((s) => JSON.stringify(s)),
@@ -70,6 +77,13 @@ const schedulesFull = new Counter('schedules_full');
 // Sonda de E1: ver probe().
 const probeOffered = new Rate('probe_offered');
 const probeAge = new Trend('probe_offered_age_ms', false);
+
+const sliceThresholds = {};
+if (SLICE_S > 0) {
+  for (let n = 0; n <= Math.ceil((RAMP + HOLD + DOWN) / SLICE_S); n++) {
+    sliceThresholds['http_req_duration{slice:' + n + '}'] = ['p(99)>=0'];
+  }
+}
 
 http.setResponseCallback(http.expectedStatuses(200, 422));
 
@@ -106,6 +120,7 @@ export const options = {
       : {}),
   },
   thresholds: {
+    ...sliceThresholds,
     // E1 y E2: p99 ≤ 200 ms y casi sin errores en la meseta.
     'http_req_duration{phase:hold}': ['p(99)<200'],
     'http_req_duration{phase:hold,endpoint:combinations}': ['p(99)<200'],
@@ -127,6 +142,7 @@ export const options = {
     'http_reqs{phase:hold,endpoint:combinations}': ['count>=0'],
     'http_reqs{phase:hold,endpoint:alternatives}': ['count>=0'],
     'http_req_duration{phase:ramp}': ['p(99)>=0'],
+    'http_req_duration{phase:warm}': ['p(99)>=0'],
     // E1: ninguna respuesta ofrece un grupo vaciado más de 5 s después.
     'probe_offered_age_ms{phase:probe}': ['max<5000'],
     'probe_offered{phase:probe}': ['rate>=0'],
@@ -173,10 +189,13 @@ export function setup() {
 export default function () {
   const i = exec.scenario.iterationInTest;
   const t = START_MS > 0 ? (Date.now() - START_MS) / 1000 : exec.instance.currentTestRunDuration / 1000;
-  const phase = t < RAMP ? 'ramp' : t < RAMP + HOLD ? 'hold' : 'down';
+  const phase = t < RAMP ? 'ramp' : t < RAMP + WARM ? 'warm' : t < RAMP + HOLD ? 'hold' : 'down';
   const isAlt = ALT_SHARE > 0 && Math.floor((i + 1) * ALT_SHARE) > Math.floor(i * ALT_SHARE);
   const endpoint = isAlt ? 'alternatives' : 'combinations';
   const tags = { phase, endpoint };
+  if (SLICE_S > 0) {
+    tags.slice = String(Math.floor(t / SLICE_S));
+  }
   const body = isAlt ? alts[i % alts.length] : combos[i % combos.length];
   const headers = { 'content-type': 'application/json' };
   const tokens = isAlt ? tokensAlts : tokensCombos;

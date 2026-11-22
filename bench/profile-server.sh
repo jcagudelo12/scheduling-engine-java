@@ -32,6 +32,7 @@ NATS_CPUS=${NATS_CPUS:-5,7}
 STORM_CPUS=${STORM_CPUS:-7}
 K6_CPUS=${K6_CPUS:-8-15}
 ENGINE_HEAP=${ENGINE_HEAP:-768m}
+ENGINE_OPTS=${ENGINE_OPTS:-}                # flags de JVM extra, p. ej. -XX:+UseSerialGC (la imagen lo usa; por defecto aquí es G1)
 ASPROF_DIR=${ASPROF_DIR:-/usr/lib/jvm/java-25-amazon-corretto}
 WORK=${WORK:-$(mktemp -d /tmp/sched-profile.XXXXXX)}
 GUARD=5
@@ -90,7 +91,7 @@ fi
 
 echo "==> Motor (núcleos $ENGINE_CPUS, heap $ENGINE_HEAP, auth=$AUTH)"
 # -XX:+DebugNonSafepoints: atribución de líneas más fiel en el perfil.
-env "${engine_env[@]}" taskset -c "$ENGINE_CPUS" java -Xmx"$ENGINE_HEAP" -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints \
+env "${engine_env[@]}" taskset -c "$ENGINE_CPUS" java -Xmx"$ENGINE_HEAP" -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints $ENGINE_OPTS \
   --enable-native-access=ALL-UNNAMED -jar "$ENGINE" > "$WORK/engine.log" 2>&1 &
 engine=$!; pids+=($engine)
 wait_until "motor listo" bash -c 'curl -fs localhost:8080/ready'

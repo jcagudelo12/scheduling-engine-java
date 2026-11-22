@@ -43,6 +43,7 @@ alineados en el tiempo. Corre sin token ni TLS, igual que `run.sh`.
 | `seat-storm` (simulador) | Vacía grupos populares a `STORM_RATE` (10 por segundo) durante la meseta, por gRPC, para E1 |
 | `report_pico.py` | Resume los JSON de k6, las métricas Prometheus de cada réplica y el uso de CPU |
 | `profile-server.sh`, `profile-tokens.py`, `profile-breakdown.py` | Perfil del motor con async-profiler (CPU, asignación, espera) bajo la mezcla del pico, con `AUTH=none` o `AUTH=jwt`; ver [`results/profile-server.md`](results/profile-server.md) |
+| `overflow-run.sh`, `overflow-summary.py`, `LatencyProbe.java` | Una corrida con medición (CPU por hilo, latencia por tramos de 10 s, descartadas y VUs de k6, sonda independiente, JFR, perfil del arranque en frío) y parámetros para los experimentos de JVM, núcleos y hilos; ver "Por qué se desborda la latencia con token" en [`results/profile-server.md`](results/profile-server.md) |
 
 **Datos del perfil `itm`** (semilla fija): 24 programas x 9 semestres, 5 o 6 asignaturas por semestre
 (las de un semestre comparten estudiantes y 2 de los primeros 4 semestres son de servicio, compartidas
