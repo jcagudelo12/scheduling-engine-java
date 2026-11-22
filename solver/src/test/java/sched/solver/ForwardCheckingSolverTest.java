@@ -138,4 +138,37 @@ class ForwardCheckingSolverTest {
         List<Section> candidates = List.of(section("A1", "A", Weekday.MONDAY, 360, 420));
         assertTrue(solver.solve(problem(candidates, 5, SectionCost.ZERO, "A", "B")).isEmpty());
     }
+
+    @Test
+    void withoutCostAndSmallMaxResultsReturnsKSortedCombinations() {
+        // 3 cursos sin cruces, 3 grupos cada uno: 27 combinaciones; se piden 4 y salen ordenadas por ids.
+        List<Section> candidates = new ArrayList<>();
+        for (int c = 0; c < 3; c++) {
+            for (int s = 2; s >= 0; s--) {
+                candidates.add(section("C" + c + "-" + s, "C" + c, Weekday.values()[s], 360 + c * 120, 420 + c * 120));
+            }
+        }
+        SearchResult result = solver.search(problem(candidates, 4, SectionCost.ZERO, "C0", "C1", "C2"));
+        assertTrue(result.complete());
+        List<List<String>> got = result.results().stream().map(ForwardCheckingSolverTest::ids).toList();
+        assertEquals(4, got.size());
+        for (int i = 1; i < got.size(); i++) {
+            assertTrue(String.join(",", got.get(i - 1)).compareTo(String.join(",", got.get(i))) < 0);
+        }
+    }
+
+    @Test
+    void repeatedSectionIdsDoNotBreakOrdering() {
+        // Dos grupos del mismo curso con el mismo id y distinto horario: mismo rango, sin excepciones.
+        List<Section> candidates = List.of(
+                section("A-1", "A", Weekday.MONDAY, 360, 420),
+                section("A-1", "A", Weekday.TUESDAY, 360, 420),
+                section("B-1", "B", Weekday.MONDAY, 360, 420),
+                section("B-2", "B", Weekday.WEDNESDAY, 360, 420));
+        List<Scored> result = solver.search(problem(candidates, 10, section -> 0L, "A", "B")).results();
+        assertEquals(3, result.size());
+        assertEquals(List.of("A-1", "B-1"), ids(result.get(0)));
+        assertEquals(List.of("A-1", "B-2"), ids(result.get(1)));
+        assertEquals(List.of("A-1", "B-2"), ids(result.get(2)));
+    }
 }

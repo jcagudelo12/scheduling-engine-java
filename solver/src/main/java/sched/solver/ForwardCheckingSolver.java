@@ -10,6 +10,7 @@ import java.util.PriorityQueue;
 import sched.domain.CourseId;
 import sched.domain.Schedule;
 import sched.domain.Section;
+import sched.domain.SectionId;
 
 /**
  * Búsqueda con retroceso, verificación hacia adelante (forward checking) y heurística MRV.
@@ -53,24 +54,30 @@ public final class ForwardCheckingSolver implements Solver {
         for (int i = 0; i < n; i++) {
             courseIndex.put(problem.courses().get(i), i);
         }
-        List<Section> sections = new ArrayList<>();
-        List<Integer> courseOfList = new ArrayList<>();
-        for (Section s : problem.candidates()) {
+        List<Section> candidates = problem.candidates();
+        Section[] sections = new Section[candidates.size()];
+        int[] courseOf = new int[sections.length];
+        boolean[] covered = new boolean[n];
+        int m = 0;
+        for (Section s : candidates) {
             Integer c = courseIndex.get(s.course());
             if (c != null) {
-                sections.add(s);
-                courseOfList.add(c);
+                sections[m] = s;
+                courseOf[m++] = c;
+                covered[c] = true;
             }
         }
-        int[] courseOf = courseOfList.stream().mapToInt(Integer::intValue).toArray();
         for (int c = 0; c < n; c++) {
-            final int course = c;
-            if (Arrays.stream(courseOf).noneMatch(x -> x == course)) {
+            if (!covered[c]) {
                 // Un curso sin grupos hace imposible cualquier combinación: la respuesta es exacta.
                 return new SearchResult(List.of(), true);
             }
         }
-        return new Search(problem, sections.toArray(new Section[0]), courseOf, stats, Budget.of(problem)).run();
+        if (m < sections.length) {
+            sections = Arrays.copyOf(sections, m);
+            courseOf = Arrays.copyOf(courseOf, m);
+        }
+        return new Search(problem, sections, courseOf, stats, Budget.of(problem)).run();
     }
 
     private static final class Entry {
@@ -92,13 +99,18 @@ public final class ForwardCheckingSolver implements Solver {
         private final long[] costs;
         private final long[][] conflicts;
         private final int[][] order;
+        /** Posición de cada grupo en el orden natural de {@code SectionId} (ids iguales, mismo rango). */
+        private final int[] rank;
         private final long[][][] domains;
         private final int[] chosen;
         private final boolean[] assigned;
         private final Stats stats;
         private final Budget budget;
         private final Comparator<Entry> output;
+        /** Con costo: las mejores hasta ahora (la peor arriba). */
         private final PriorityQueue<Entry> top;
+        /** Sin costo: las primeras {@code k} halladas, sin cola de prioridad. */
+        private final List<Entry> found;
 
         Search(Problem problem, Section[] sections, int[] courseOf, Stats stats, Budget budget) {
             this.n = problem.courses().size();
@@ -129,20 +141,23 @@ public final class ForwardCheckingSolver implements Solver {
                 }
             }
 
-            // Grupos de cada curso por menor costo y luego SectionId.
-            List<List<Integer>> perCourse = new ArrayList<>();
-            for (int c = 0; c < n; c++) {
-                perCourse.add(new ArrayList<>());
-            }
+            rank = ranks(sections);
+
+            // Grupos de cada curso por menor costo y luego SectionId (por rango).
+            int[] perCourse = new int[n];
             for (int g = 0; g < m; g++) {
-                perCourse.get(courseOf[g]).add(g);
+                perCourse[courseOf[g]]++;
             }
-            Comparator<Integer> byCost = Comparator.<Integer>comparingLong(g -> costs[g])
-                    .thenComparing(g -> sections[g].id());
             order = new int[n][];
             for (int c = 0; c < n; c++) {
-                perCourse.get(c).sort(byCost);
-                order[c] = perCourse.get(c).stream().mapToInt(Integer::intValue).toArray();
+                order[c] = new int[perCourse[c]];
+                perCourse[c] = 0;
+            }
+            for (int g = 0; g < m; g++) {
+                order[courseOf[g]][perCourse[courseOf[g]]++] = g;
+            }
+            for (int c = 0; c < n; c++) {
+                sortByCostThenRank(order[c]);
             }
 
             domains = new long[n + 1][n][words];
@@ -153,14 +168,54 @@ public final class ForwardCheckingSolver implements Solver {
             assigned = new boolean[n];
 
             output = Comparator.comparingLong((Entry e) -> e.cost).thenComparing(this::compareIds);
-            top = new PriorityQueue<>(output.reversed());
+            top = costed ? new PriorityQueue<>(output.reversed()) : null;
+            found = costed ? null : new ArrayList<>(Math.min(k, 64));
+        }
+
+        /** Rango de cada grupo según el orden natural de su id; ids iguales comparten rango. */
+        private static int[] ranks(Section[] sections) {
+            int m = sections.length;
+            SectionId[] sorted = new SectionId[m];
+            for (int g = 0; g < m; g++) {
+                sorted[g] = sections[g].id();
+            }
+            Arrays.sort(sorted);
+            int unique = 0;
+            for (int g = 0; g < m; g++) {
+                if (unique == 0 || sorted[g].compareTo(sorted[unique - 1]) != 0) {
+                    sorted[unique++] = sorted[g];
+                }
+            }
+            int[] rank = new int[m];
+            for (int g = 0; g < m; g++) {
+                rank[g] = Arrays.binarySearch(sorted, 0, unique, sections[g].id());
+            }
+            return rank;
+        }
+
+        /** Ordena índices de grupo por costo y luego rango (inserción: son pocos grupos por curso; estable). */
+        private void sortByCostThenRank(int[] groups) {
+            for (int i = 1; i < groups.length; i++) {
+                int g = groups[i];
+                int j = i - 1;
+                while (j >= 0 && before(g, groups[j])) {
+                    groups[j + 1] = groups[j];
+                    j--;
+                }
+                groups[j + 1] = g;
+            }
+        }
+
+        private boolean before(int a, int b) {
+            return costs[a] != costs[b] ? costs[a] < costs[b] : rank[a] < rank[b];
         }
 
         private int compareIds(Entry a, Entry b) {
             for (int c = 0; c < n; c++) {
-                int cmp = sections[a.chosen[c]].id().compareTo(sections[b.chosen[c]].id());
-                if (cmp != 0) {
-                    return cmp;
+                int x = rank[a.chosen[c]];
+                int y = rank[b.chosen[c]];
+                if (x != y) {
+                    return x < y ? -1 : 1;
                 }
             }
             return 0;
@@ -168,7 +223,7 @@ public final class ForwardCheckingSolver implements Solver {
 
         SearchResult run() {
             search(0, 0);
-            List<Entry> entries = new ArrayList<>(top);
+            List<Entry> entries = costed ? new ArrayList<>(top) : found;
             entries.sort(output);
             List<Scored> result = new ArrayList<>(entries.size());
             for (Entry e : entries) {
@@ -182,7 +237,7 @@ public final class ForwardCheckingSolver implements Solver {
         }
 
         private boolean full() {
-            return top.size() >= k;
+            return (costed ? top.size() : found.size()) >= k;
         }
 
         private void search(int level, long cost) {
@@ -198,6 +253,7 @@ public final class ForwardCheckingSolver implements Solver {
             int v = -1;
             int bestCard = Integer.MAX_VALUE;
             long sumMin = 0;
+            long vMin = 0;
             for (int c = 0; c < n; c++) {
                 if (assigned[c]) {
                     continue;
@@ -207,15 +263,15 @@ public final class ForwardCheckingSolver implements Solver {
                 for (long w : d) {
                     card += Long.bitCount(w);
                 }
+                long min = costed ? costs[firstIn(d, order[c])] : 0;
                 if (card < bestCard) {
                     bestCard = card;
                     v = c;
+                    vMin = min;
                 }
-                if (costed) {
-                    sumMin += costs[firstIn(d, order[c])];
-                }
+                sumMin += min;
             }
-            long othersMin = costed ? sumMin - costs[firstIn(domains[level][v], order[v])] : 0;
+            long othersMin = sumMin - vMin;
 
             long[] dv = domains[level][v];
             for (int g : order[v]) {
@@ -224,7 +280,7 @@ public final class ForwardCheckingSolver implements Solver {
                 }
                 long next = cost + costs[g];
                 // Los grupos vienen por costo creciente: si este ya no mejora, ninguno siguiente lo hará.
-                if (full() && next + othersMin >= top.peek().cost) {
+                if (full() && (!costed || next + othersMin >= top.peek().cost)) {
                     break;
                 }
                 if (!filter(level, v, g)) {
@@ -272,7 +328,10 @@ public final class ForwardCheckingSolver implements Solver {
         }
 
         private void record(long cost) {
-            if (!full()) {
+            if (!costed) {
+                // Sin costo todas valen lo mismo: las primeras k son el resultado y la búsqueda se detiene.
+                found.add(new Entry(cost, chosen.clone()));
+            } else if (!full()) {
                 top.add(new Entry(cost, chosen.clone()));
             } else if (cost < top.peek().cost) {
                 top.poll();

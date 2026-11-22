@@ -39,7 +39,14 @@ public final class SlotBitmaps {
                 raw[k++] = absolute(t, t.end());
             }
         }
-        int[] bounds = Arrays.stream(raw).sorted().distinct().toArray();
+        Arrays.sort(raw);
+        int unique = 0;
+        for (int i = 0; i < raw.length; i++) {
+            if (unique == 0 || raw[i] != raw[unique - 1]) {
+                raw[unique++] = raw[i];
+            }
+        }
+        int[] bounds = Arrays.copyOf(raw, unique);
         int bits = Math.max(bounds.length - 1, 0);
         int words = Math.max((bits + 63) >>> 6, 1);
 
