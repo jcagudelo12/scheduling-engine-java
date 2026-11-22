@@ -14,6 +14,8 @@ pequeña, el resto es HTTP/JSON/filtros (no se perfiló)"). Solo se midió: no s
   3,5 veces el costo de todo lo demás junto. Una sola verificación del `Signature` Ed25519 del JDK 25 tarda ~870 us en esta
   máquina (medido aparte, sin el motor). Con 2 núcleos, una réplica con JWT satura a ~1.700 solicitudes/s, no a ~5.000.
   **La capacidad de `report-pico.md` (5.000/s por réplica, "sin token a propósito") no vale para producción.**
+- **Actualización:** con Ed25519 de BouncyCastle y rechazos baratos antes de la firma, la firma baja de ~790 a ~210 us por solicitud
+  y el costo total de 1.114 a 601 us; ver [Después de optimizar el token](#después-de-optimizar-el-token).
 
 ## 1. Entorno y cómo reproducirlo
 
@@ -274,3 +276,82 @@ tasas mucho mayores que las del anteproyecto, o para el escenario de ráfaga de 
 - Gráficos de llama (HTML, interactivos), en `bench/results/profile/`: `sinjwt-4000_{cpu,alloc,wall}.html` (A), `sinjwt-1200_*` (B),
   `jwt-1200_*` (C). Los `.jfr` y `.collapsed` crudos (el `collapsed` de CPU pesa ~30 MB) quedaron fuera del repo.
 - `bench/profile-server.sh`, `bench/profile-tokens.py`, `bench/profile-breakdown.py` y el soporte de tokens en `bench/load-pico.js`.
+
+## Después de optimizar el token
+
+Cambios (ADR 0004, nota de revisión del 2026-11-22): la firma Ed25519 se verifica con `org.bouncycastle.math.ec.rfc8032.Ed25519`
+(bcprov-jdk18on 1.87) en lugar de `java.security.Signature`; la llave pública se decodifica y valida una sola vez al arrancar
+(sin `getInstance`/`initVerify` por solicitud); y los rechazos baratos (formato, `alg`, `kid`, longitud de la firma, `exp`, `nbf`,
+`iat`, `iss`, `aud`, `sub`, `courses`) se evalúan antes que la firma. **Cada solicitud sigue verificando su firma: el motor no guarda
+estado de autenticación entre solicitudes.** No cambia el formato del token ni el contrato HTTP.
+
+### Microbenchmark (JMH, `JwtVerifyBenchmark`, 1 fork, 3 calentamientos y 5 mediciones de 2 s, una sola ejecución)
+
+Misma máquina y token de 6 cursos. Microsegundos por operación (media ± error del intervalo de confianza al 99,9 % de JMH):
+
+| Qué se mide | us/op |
+|---|--:|
+| Verificación completa `JwtVerifier`, **antes** (firma con el JDK) | 867 ± 37 |
+| Verificación completa `JwtVerifier`, **después** (BouncyCastle) | **97 ± 4** |
+| Solo la firma: `Signature` Ed25519 del JDK 25, instancia nueva por llamada | 875 ± 35 |
+| Solo la firma: `Signature` Ed25519 del JDK, instancia reutilizada | 806-861 |
+| Solo la firma: BouncyCastle Ed25519, llave en bytes | 107 ± 4 |
+| Solo la firma: BouncyCastle Ed25519, llave ya decodificada (`PublicPoint`) | 96-97 ± 4 |
+| Base64 + JSON de cabecera, claims y firma | 1,8 |
+| *Referencia, no implementada:* ES256 (ECDSA P-256) con el JDK | 814 ± 40 |
+| *Referencia, no implementada:* ES256 con BouncyCastle (`ECDSASigner`) | 99 ± 2 |
+
+La firma del JDK 25 es ~9 veces más lenta que la de BouncyCastle, y **ES256 no ayudaría**: con el JDK cuesta lo mismo que Ed25519
+(814 us contra 875 us) y con BouncyCastle lo mismo (99 us contra 97 us). Cambiar de algoritmo con la institución no ahorraría CPU;
+lo que se gana es la implementación. Reutilizar el objeto `Signature` del JDK tampoco ayuda (-1 a -8 %). El trabajo que no es criptografía
+(Base64 y JSON) son ~2 us: no merece optimizarse.
+
+### Carga con JWT (`AUTH=jwt bench/profile-server.sh`, mismo entorno y datos que §1: 1 réplica con 2 núcleos, perfil `itm`)
+
+Corrida a 1.200/s (+100/s de sonda) con las mismas ventanas que la corrida C (meseta de 235 s):
+
+| | C, antes (JDK) | **Después (BouncyCastle)** |
+|---|--:|--:|
+| CPU por solicitud, ventana `cpu` (con profiler) | 1.114 us | **601 us** |
+| CPU por solicitud, ventana `base` (sin profiler) | 1.128 us | **638 us** (24,99 s de CPU en 39.179 solicitudes) |
+| Firma Ed25519 | 786 us (70,6 % de la CPU) | **207 us (34,4 %)** |
+| Decodificación y claims (Base64 + JSON) | 10 us | 19 us (3,2 %) |
+| Bytes asignados por solicitud (`alloc`) | 104.314 B (firma: 51.439 B) | **57.154 B** (firma: 5.773 B; decodificación 5.800 B) |
+| k6, meseta: p50 / p95 / p99 / máx. | 1,3 ms / 60 ms / 141 ms / 5,1 s | **0,79 ms / 1,10 ms / 2,08 ms / 56 ms** |
+| Errores | 0 % | 0 % (282.002 solicitudes) |
+
+La firma pasa de 786 a 207 us por solicitud (3,8 veces menos), no a los 97 us del JMH: bajo carga el motor comparte núcleos físicos
+con k6 (hilos hermanos) y las cachés con el resto del trabajo. El resto de la solicitud (lo que no es firma) quedó en ~394 us contra ~328 us
+antes (1.114 - 786): una diferencia mayor que el ruido de ±7 % entre ventanas que no se investigó (puede ser variación entre corridas).
+
+**Tasa sostenible con token.** Cada punto es una corrida aparte (rampa 20 s, meseta con 30 s de calentamiento, ventana `base` de 45 s sin
+profiler y solo 2 s de profiler para no ensuciar la latencia; una sola ejecución por punto). La p99 de k6 es la de toda la meseta
+(incluye el calentamiento de la JVM y la ráfaga de cupos de 6/s). Los 100/s de la sonda de E1 no están en la tasa nominal.
+
+| Tasa nominal | Solicitudes/s medidas (`base`) | CPU de los 2 núcleos | CPU por solicitud | p50 / p95 / p99 (k6) | Errores |
+|--:|--:|--:|--:|---|--:|
+| 1.200 | 1.303 | 42 % | 638 us | 0,79 / 1,10 / 2,08 ms | 0 % |
+| 2.000 | 2.103 | 45 % | 425 us | 0,51 / 1,17 / **5,9 ms** | 0 % |
+| 2.500 | 2.605 | 51 % | 394 us | 0,47 / 3,7 / 19,9 ms | 0 % |
+| 3.000 | 3.104 | 54 % | 351 us | 0,46 / 2,3 / 31,7 ms | 0 % |
+| 3.500 | 3.608 | 74 % | 411 us | 0,73 / 839 / 957 ms | 0 % |
+| 4.000 | 4.110 | 67 % | 328 us | 0,45 / 103 / 298 ms | 0 % |
+| 4.500 | 4.607 | 75 % | 325 us | 0,47 / 354 / 451 ms | 0 % |
+| 5.000 | 5.026 | 85 % | 337 us | 0,56 / 209 / 599 ms | 0 % |
+
+- **La tasa máxima con p99 de pocos ms es ~2.000 solicitudes/s por réplica de 2 núcleos** (p99 5,9 ms); a 2.500/s la p99 ya es 20 ms y
+  a 3.000/s, 32 ms. Antes la corrida a 1.200/s tenía p99 de 141 ms y la saturación llegaba a ~1.700/s (1.170 us por solicitud): ahora a
+  1.200/s la p99 es 2 ms y a 2.000/s sigue en 6 ms. Sin errores en ningún punto (el motor no rechaza, encola).
+- A partir de ~3.500/s la latencia se desborda (p95 de cientos de ms) aunque los 2 núcleos no están saturados (70-85 %): la firma es
+  un bloque de ~200 us de CPU que no se interrumpe, y con 2 portadores de hilos virtuales las ráfagas de llegadas hacen cola. **La causa
+  exacta no se investigó**; no se probó con más hilos portadores ni sin k6 compartiendo los núcleos físicos.
+- Sin token (informe del pico) la misma réplica sostenía ~5.000/s con p99 de unos pocos ms: con token ya no se pierde el 70 % de la capacidad,
+  pero aún queda por debajo de la de sin token (el 34 % de la CPU es la firma).
+- Para dimensionar con token, usar ~2.000/s por réplica de 2 núcleos como capacidad con latencia baja (antes, a 1.200/s la p99 ya era de 141 ms).
+
+### Lo que no se verificó
+
+- Una sola ejecución por punto; el ruido entre ventanas ronda ±7 %. Las filas de más de 3.000/s son indicativas.
+- Los tokens se firmaron con 900 s de vida y se reutilizan (un token por cuerpo de `students.json`/`alternatives.json`): como no hay estado entre
+  solicitudes, el costo no depende de esa reutilización.
+- La CPU y la latencia de producción (otra CPU, Traefik delante, red real) no se midieron.
