@@ -49,7 +49,7 @@ class ForwardCheckingSolverTest {
             }
         }
         ForwardCheckingSolver.Stats stats = new ForwardCheckingSolver.Stats();
-        assertTrue(solver.solveScored(problem(candidates, 100, SectionCost.ZERO, courses), stats).isEmpty());
+        assertTrue(solver.search(problem(candidates, 100, SectionCost.ZERO, courses), stats).results().isEmpty());
         assertTrue(stats.nodes < 10, "nodos: " + stats.nodes);
     }
 
@@ -64,7 +64,7 @@ class ForwardCheckingSolverTest {
         candidates.add(section("Z0", "Z", Weekday.TUESDAY, 360, 600));
 
         ForwardCheckingSolver.Stats stats = new ForwardCheckingSolver.Stats();
-        assertTrue(solver.solveScored(problem(candidates, 100, SectionCost.ZERO, "X", "Y", "Z"), stats).isEmpty());
+        assertTrue(solver.search(problem(candidates, 100, SectionCost.ZERO, "X", "Y", "Z"), stats).results().isEmpty());
         assertEquals(1, stats.nodes);
     }
 
@@ -104,7 +104,7 @@ class ForwardCheckingSolverTest {
             }
         }
         ForwardCheckingSolver.Stats stats = new ForwardCheckingSolver.Stats();
-        assertEquals(1, solver.solveScored(problem(candidates, 1, SectionCost.ZERO, courses), stats).size());
+        assertEquals(1, solver.search(problem(candidates, 1, SectionCost.ZERO, courses), stats).results().size());
         assertEquals(6, stats.nodes); // raíz + 5 niveles, sin retroceso
     }
 

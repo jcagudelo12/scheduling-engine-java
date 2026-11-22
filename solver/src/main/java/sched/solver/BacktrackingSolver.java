@@ -14,11 +14,14 @@ import sched.domain.Section;
  * detiene en cuanto reúne {@code maxResults}; con costo enumera todas las combinaciones, las
  * ordena por costo total (y luego por ids de grupo en el orden de cursos) y corta. Es
  * deliberadamente simple: no hace ramificación y poda, y sirve de oráculo del top-K.
+ *
+ * <p>Si {@link Problem#timeLimit()} vence, corta y devuelve lo enumerado hasta ese momento con
+ * {@code complete = false}; con costo, entonces, no es un top-K garantizado.
  */
 public final class BacktrackingSolver implements Solver {
 
     @Override
-    public List<Scored> solveScored(Problem problem) {
+    public SearchResult search(Problem problem) {
         List<List<Section>> options = new ArrayList<>(problem.courses().size());
         for (CourseId course : problem.courses()) {
             List<Section> sections = new ArrayList<>();
@@ -29,14 +32,15 @@ public final class BacktrackingSolver implements Solver {
             }
             // Un curso sin grupos disponibles hace imposible cualquier combinación completa.
             if (sections.isEmpty()) {
-                return List.of();
+                return new SearchResult(List.of(), true);
             }
             options.add(sections);
         }
 
         int limit = problem.hasCost() ? Integer.MAX_VALUE : problem.maxResults();
         List<Schedule> found = new ArrayList<>();
-        search(options, 0, new ArrayList<>(options.size()), found, limit);
+        Budget budget = Budget.of(problem);
+        search(options, 0, new ArrayList<>(options.size()), found, limit, budget);
 
         List<Scored> scored = new ArrayList<>(found.size());
         for (Schedule schedule : found) {
@@ -46,11 +50,12 @@ public final class BacktrackingSolver implements Solver {
             }
             scored.add(new Scored(schedule, total));
         }
+        boolean complete = !budget.cut();
         if (!problem.hasCost()) {
-            return scored;
+            return new SearchResult(scored, complete);
         }
         scored.sort(Comparator.comparingLong(Scored::cost).thenComparing(BacktrackingSolver::compareIds));
-        return List.copyOf(scored.subList(0, Math.min(problem.maxResults(), scored.size())));
+        return new SearchResult(scored.subList(0, Math.min(problem.maxResults(), scored.size())), complete);
     }
 
     private static int compareIds(Scored a, Scored b) {
@@ -70,8 +75,9 @@ public final class BacktrackingSolver implements Solver {
             int depth,
             List<Section> current,
             List<Schedule> results,
-            int maxResults) {
-        if (results.size() >= maxResults) {
+            int maxResults,
+            Budget budget) {
+        if (results.size() >= maxResults || budget.expired()) {
             return;
         }
         if (depth == options.size()) {
@@ -83,7 +89,7 @@ public final class BacktrackingSolver implements Solver {
                 continue;
             }
             current.add(section);
-            search(options, depth + 1, current, results, maxResults);
+            search(options, depth + 1, current, results, maxResults, budget);
             current.removeLast();
         }
     }

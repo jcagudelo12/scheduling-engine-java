@@ -18,6 +18,8 @@ import sched.domain.SectionId;
  * @param conflicts conflictos detectados en la selección original
  * @param alternatives de menor a mayor distancia y, a igual distancia, de menor a mayor
  *     penalización (empates por ids de grupo)
+ * @param complete {@code false} si la búsqueda se cortó por el tiempo máximo: las alternativas
+ *     son válidas pero no está garantizado que sean las mejores
  */
 public record Alternatives(
         long catalogSeq,
@@ -26,7 +28,8 @@ public record Alternatives(
         int maxCredits,
         boolean selectionValid,
         Conflicts conflicts,
-        List<Alternative> alternatives) {
+        List<Alternative> alternatives,
+        boolean complete) {
 
     /** Por qué cambia el grupo de un curso respecto de la selección original. */
     public enum Reason {

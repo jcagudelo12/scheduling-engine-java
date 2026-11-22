@@ -7,6 +7,7 @@ import static sched.application.Alternatives.Clash;
 import static sched.application.Alternatives.Conflicts;
 import static sched.application.Alternatives.Reason;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -23,6 +24,7 @@ import sched.domain.SectionId;
 import sched.domain.StudentContext;
 import sched.solver.Problem;
 import sched.solver.Scored;
+import sched.solver.SearchResult;
 import sched.solver.SectionCost;
 import sched.solver.Solver;
 
@@ -59,6 +61,9 @@ import sched.solver.Solver;
  *
  * <p>Verifica el tope de créditos igual que {@link GenerateCombinations}. Devuelve a lo sumo
  * {@code maxAlternatives} alternativas (parámetro propio, {@code SCHED_MAX_ALTERNATIVES}).
+ *
+ * <p>La búsqueda tiene un tiempo máximo opcional ({@code SCHED_SEARCH_TIMEOUT_MS}). Si vence, se
+ * responde con lo encontrado y {@link Alternatives#complete()} en {@code false}.
  */
 public final class SuggestAlternatives {
 
@@ -78,11 +83,19 @@ public final class SuggestAlternatives {
     private final Solver solver;
     private final CatalogReplica replica;
     private final int maxAlternatives;
+    private final Duration searchTimeout;
 
+    /** Sin tiempo máximo de búsqueda. */
     public SuggestAlternatives(Solver solver, CatalogReplica replica, int maxAlternatives) {
+        this(solver, replica, maxAlternatives, null);
+    }
+
+    /** @param searchTimeout tiempo máximo de la búsqueda; {@code null} = sin límite */
+    public SuggestAlternatives(Solver solver, CatalogReplica replica, int maxAlternatives, Duration searchTimeout) {
         this.solver = solver;
         this.replica = replica;
         this.maxAlternatives = maxAlternatives;
+        this.searchTimeout = searchTimeout;
     }
 
     /** Sin grupos ya inscritos: todo grupo de la selección sin cupo en la réplica es {@code NO_SEATS}. */
@@ -162,14 +175,15 @@ public final class SuggestAlternatives {
         snapshot.selected().forEach((course, s) -> chosen.put(course, s.id()));
         Preferences preferences = student.preferences();
         SectionCost cost = lexicographicCost(snapshot.candidates(), chosen, preferences);
-        Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxAlternatives, cost);
+        Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxAlternatives, cost, searchTimeout);
 
+        SearchResult found = solver.search(problem);
         List<Alternative> alternatives = new ArrayList<>();
-        for (Scored scored : solver.solveScored(problem)) {
+        for (Scored scored : found.results()) {
             alternatives.add(describe(scored, student.eligibleCourses(), chosen, reasons, preferences));
         }
         return new Alternatives(snapshot.seq(), snapshot.stale(), snapshot.totalCredits(), snapshot.maxCredits(),
-                selectionValid, conflicts, alternatives);
+                selectionValid, conflicts, alternatives, found.complete());
     }
 
     /** cost(g) = (g ≠ elección del curso ? W : 0) + penalización(g); ver la documentación de la clase. */

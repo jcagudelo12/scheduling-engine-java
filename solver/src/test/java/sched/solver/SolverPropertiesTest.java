@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -180,6 +181,22 @@ class SolverPropertiesTest {
         Problem limited = new Problem(p.courses(), p.candidates(), max);
         int expected = Math.min(max, oracle(p).size());
         assertEquals(expected, solver().solve(limited).size());
+    }
+
+    /** Un tiempo máximo holgado no cambia nada: mismos resultados que sin límite y búsqueda completa. */
+    @Property
+    void aGenerousTimeLimitChangesNothing(
+            @ForAll("problems") Problem p, @ForAll("limits") int max, @ForAll int seed) {
+        SectionCost cost = seed % 2 == 0
+                ? SectionCost.ZERO
+                : section -> Math.floorMod(section.id().value().hashCode() ^ seed, 12);
+        Problem unlimited = new Problem(p.courses(), p.candidates(), max, cost);
+        Problem limited = new Problem(p.courses(), p.candidates(), max, cost, Duration.ofSeconds(30));
+        SearchResult expected = solver().search(unlimited);
+        SearchResult actual = solver().search(limited);
+        assertTrue(expected.complete());
+        assertTrue(actual.complete());
+        assertEquals(expected.results(), actual.results());
     }
 
     @Provide

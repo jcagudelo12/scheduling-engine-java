@@ -26,6 +26,11 @@ import sched.domain.Section;
  * La salida va por costo y luego por ids de grupo en el orden de cursos de la solicitud. Entre
  * combinaciones de igual costo que no caben en el top-K, cuáles quedan depende del orden de
  * búsqueda (determinista), no del orden por ids.
+ *
+ * <p>Tiempo máximo: si {@link Problem#timeLimit()} vence, la búsqueda se corta y se devuelve lo
+ * encontrado con {@code complete = false}. Con costo, entonces, son las mejores combinaciones
+ * halladas hasta ese momento y no un top-K garantizado. El reloj se lee cada
+ * {@value Budget#CHECK_EVERY} nodos, así que el corte llega con una demora de microsegundos.
  */
 public final class ForwardCheckingSolver implements Solver {
 
@@ -35,14 +40,14 @@ public final class ForwardCheckingSolver implements Solver {
     }
 
     @Override
-    public List<Scored> solveScored(Problem problem) {
-        return solveScored(problem, new Stats());
+    public SearchResult search(Problem problem) {
+        return search(problem, new Stats());
     }
 
-    List<Scored> solveScored(Problem problem, Stats stats) {
+    SearchResult search(Problem problem, Stats stats) {
         int n = problem.courses().size();
         if (problem.maxResults() <= 0) {
-            return List.of();
+            return new SearchResult(List.of(), true);
         }
         Map<CourseId, Integer> courseIndex = new HashMap<>();
         for (int i = 0; i < n; i++) {
@@ -61,10 +66,11 @@ public final class ForwardCheckingSolver implements Solver {
         for (int c = 0; c < n; c++) {
             final int course = c;
             if (Arrays.stream(courseOf).noneMatch(x -> x == course)) {
-                return List.of(); // un curso sin grupos hace imposible cualquier combinación
+                // Un curso sin grupos hace imposible cualquier combinación: la respuesta es exacta.
+                return new SearchResult(List.of(), true);
             }
         }
-        return new Search(problem, sections.toArray(new Section[0]), courseOf, stats).run();
+        return new Search(problem, sections.toArray(new Section[0]), courseOf, stats, Budget.of(problem)).run();
     }
 
     private static final class Entry {
@@ -90,15 +96,17 @@ public final class ForwardCheckingSolver implements Solver {
         private final int[] chosen;
         private final boolean[] assigned;
         private final Stats stats;
+        private final Budget budget;
         private final Comparator<Entry> output;
         private final PriorityQueue<Entry> top;
 
-        Search(Problem problem, Section[] sections, int[] courseOf, Stats stats) {
+        Search(Problem problem, Section[] sections, int[] courseOf, Stats stats, Budget budget) {
             this.n = problem.courses().size();
             this.k = problem.maxResults();
             this.costed = problem.hasCost();
             this.sections = sections;
             this.stats = stats;
+            this.budget = budget;
             int m = sections.length;
             this.words = Math.max((m + 63) >>> 6, 1);
 
@@ -158,7 +166,7 @@ public final class ForwardCheckingSolver implements Solver {
             return 0;
         }
 
-        List<Scored> run() {
+        SearchResult run() {
             search(0, 0);
             List<Entry> entries = new ArrayList<>(top);
             entries.sort(output);
@@ -170,7 +178,7 @@ public final class ForwardCheckingSolver implements Solver {
                 }
                 result.add(new Scored(new Schedule(picked), e.cost));
             }
-            return List.copyOf(result);
+            return new SearchResult(result, !budget.cut());
         }
 
         private boolean full() {
@@ -178,6 +186,9 @@ public final class ForwardCheckingSolver implements Solver {
         }
 
         private void search(int level, long cost) {
+            if (budget.expired()) {
+                return;
+            }
             stats.nodes++;
             if (level == n) {
                 record(cost);
@@ -223,6 +234,9 @@ public final class ForwardCheckingSolver implements Solver {
                 chosen[v] = g;
                 search(level + 1, next);
                 assigned[v] = false;
+                if (budget.expired()) {
+                    return;
+                }
             }
         }
 

@@ -1,11 +1,13 @@
 package sched.application;
 
+import java.time.Duration;
 import java.util.List;
 import sched.domain.EnrollmentRules;
 import sched.domain.Preferences;
 import sched.domain.Section;
 import sched.domain.StudentContext;
 import sched.solver.Problem;
+import sched.solver.SearchResult;
 import sched.solver.SectionCost;
 import sched.solver.Solver;
 
@@ -19,6 +21,10 @@ import sched.solver.Solver;
  *
  * <p>Las preferencias del estudiante no descartan combinaciones: las ordenan por penalización
  * (ver {@link Preferences}) y se devuelven las {@code maxResults} de menor penalización.
+ *
+ * <p>La búsqueda tiene un tiempo máximo opcional ({@code SCHED_SEARCH_TIMEOUT_MS}). Si vence, se
+ * responde con lo encontrado y {@link Combinations#complete()} en {@code false}: las
+ * combinaciones son válidas, pero con preferencias pueden no ser las de menor penalización.
  */
 public final class GenerateCombinations {
 
@@ -29,11 +35,19 @@ public final class GenerateCombinations {
     private final Solver solver;
     private final CatalogReplica replica;
     private final int maxResults;
+    private final Duration searchTimeout;
 
+    /** Sin tiempo máximo de búsqueda. */
     public GenerateCombinations(Solver solver, CatalogReplica replica, int maxResults) {
+        this(solver, replica, maxResults, null);
+    }
+
+    /** @param searchTimeout tiempo máximo de la búsqueda; {@code null} = sin límite */
+    public GenerateCombinations(Solver solver, CatalogReplica replica, int maxResults, Duration searchTimeout) {
         this.solver = solver;
         this.replica = replica;
         this.maxResults = maxResults;
+        this.searchTimeout = searchTimeout;
     }
 
     public Combinations execute(StudentContext student) throws AppException {
@@ -54,11 +68,12 @@ public final class GenerateCombinations {
         // solver corta en cuanto reúne maxResults; con ellas devuelve las de menor penalización.
         Preferences preferences = student.preferences();
         SectionCost cost = preferences.isEmpty() ? SectionCost.ZERO : preferences::penaltyOf;
-        Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxResults, cost);
-        List<ScoredSchedule> schedules = solver.solveScored(problem).stream()
+        Problem problem = new Problem(student.eligibleCourses(), snapshot.candidates(), maxResults, cost, searchTimeout);
+        SearchResult found = solver.search(problem);
+        List<ScoredSchedule> schedules = found.results().stream()
                 .map(scored -> new ScoredSchedule(scored.schedule(), scored.cost()))
                 .toList();
         return new Combinations(snapshot.seq(), snapshot.stale(), snapshot.totalCredits(), snapshot.maxCredits(),
-                schedules);
+                schedules, found.complete());
     }
 }
