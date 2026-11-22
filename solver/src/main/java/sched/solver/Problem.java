@@ -1,5 +1,6 @@
 package sched.solver;
 
+import java.util.LinkedHashSet;
 import java.util.List;
 import sched.domain.CourseId;
 import sched.domain.Section;
@@ -8,7 +9,8 @@ import sched.domain.Section;
 public record Problem(List<CourseId> courses, List<Section> candidates, int maxResults) {
 
     public Problem {
-        courses = List.copyOf(courses);
+        // Un curso repetido no puede aportar dos grupos: se conserva la primera aparición.
+        courses = List.copyOf(new LinkedHashSet<>(courses));
         candidates = List.copyOf(candidates);
     }
 }

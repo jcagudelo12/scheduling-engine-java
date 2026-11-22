@@ -125,4 +125,16 @@ class UseCasesTest {
         assertThrows(AppException.CatalogUnavailable.class, () -> apply.execute(seats(1, "MAT-01", 0)));
         assertThrows(AppException.CatalogUnavailable.class, () -> generate.execute(STUDENT));
     }
+
+    @Test
+    void repeatedCoursesAreIgnored() throws Exception {
+        load.execute(100, catalog());
+
+        StudentContext repeated = new StudentContext(new StudentId("s1"),
+                List.of(new CourseId("MAT"), new CourseId("FIS"), new CourseId("MAT")));
+
+        Combinations result = generate.execute(repeated);
+        assertEquals(2, result.schedules().size());
+        assertTrue(result.schedules().stream().allMatch(s -> s.sections().size() == 2));
+    }
 }
