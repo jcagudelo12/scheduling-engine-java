@@ -193,4 +193,31 @@ class JwtAuthFilterTest {
         assertEquals(400, response.getStatus());
         assertFalse(response.getContentAsString().contains("token"));
     }
+
+    @Test
+    void validTokenWithoutCoursesAnswers400OnBothEndpoints() throws Exception {
+        String empty = TestTokens.sign(key.getPrivate(), "k1", TestTokens.claims(NOW, "est-001", List.of()));
+
+        for (String path : new String[] {"/combinations", "/alternatives"}) {
+            var response = send(path, "Bearer " + empty, "{}");
+            assertEquals(400, response.getStatus(), path);
+            assertTrue(response.getContentAsString().contains("se requiere al menos una asignatura"));
+        }
+        assertEquals(0, searches.get());
+    }
+
+    @Test
+    void theWebClientIsPublicButOnlyForReadingAndWithoutTricks() throws Exception {
+        // Sin controlador para /app en este montaje: un 404 significa que el filtro lo dejó pasar.
+        for (String path : new String[] {"/app", "/app/", "/app/index.html", "/app/js/main.js"}) {
+            assertEquals(404, mvc.perform(get(path)).andReturn().getResponse().getStatus(), path);
+        }
+        // Otros métodos, otras rutas parecidas y los intentos de salirse de /app exigen token.
+        assertEquals(401, mvc.perform(post("/app/index.html")).andReturn().getResponse().getStatus());
+        for (String path : new String[] {"/application", "/apps/x", "/app/../combinations",
+                "/app/%2e%2e/combinations", "/app;x=1/y", "/appx"}) {
+            assertEquals(401, mvc.perform(get(path)).andReturn().getResponse().getStatus(), path);
+        }
+        assertEquals(401, send("/combinations", null, "{}").getStatus());
+    }
 }

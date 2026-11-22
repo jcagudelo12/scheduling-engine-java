@@ -11,7 +11,7 @@ despliegue con Docker se llega a ella a través de Traefik, en `localhost:8080`.
 
 Las solicitudes de consulta (`/combinations`, `/alternatives`) exigen un **token firmado por la
 institución** ([ADR 0004](adr/0004-contexto-del-estudiante-en-token-firmado.md)) en
-`Authorization: Bearer <token>`. `/health` y `/ready` no lo necesitan.
+`Authorization: Bearer <token>`. `/health`, `/ready` y el [cliente web de demostración](inicio-rapido.md#cliente-de-demostración) (`GET /app/**`, recursos estáticos sin datos de estudiantes) no lo necesitan.
 
 El token es un JWS compacto firmado con **EdDSA (Ed25519)**. El motor lo verifica con la llave
 pública de la institución (`SCHED_JWT_PUBLIC_KEYS`); sin la firma válida no confía en nada de su
@@ -197,7 +197,7 @@ problema.
 | `401` | Falta el token, o es inválido, vencido, de otro emisor o audiencia, o supera los 8 KB. Ver [Autenticación](#autenticación) | `{ "error": "unauthorized" }` y `WWW-Authenticate: Bearer` |
 | `400` | El cuerpo trae `student_id` o `eligible_courses` distintos a los del token | `{ "error": "invalid_request", "message": "student_id no coincide con el del token" }` |
 | `400` | El cuerpo falta, no es JSON válido, o un campo tiene un tipo incorrecto (por ejemplo `eligible_courses` como texto) | `{ "error": "invalid_request", "message": "..." }` |
-| `400` | Falta `student_id` o `eligible_courses`, o son nulos o vacíos; un id con caracteres no permitidos o demasiado largo; se excede un [límite](#límites-de-la-solicitud) | `{ "error": "invalid_request", "message": "falta student_id" }` |
+| `400` | Falta `student_id` o `eligible_courses`, o son nulos o vacíos (`se requiere al menos una asignatura`); un id con caracteres no permitidos o demasiado largo; se excede un [límite](#límites-de-la-solicitud) | `{ "error": "invalid_request", "message": "falta student_id" }` |
 | `400` | Una ventana de `avoid` es inválida (día desconocido o ausente, `end_minute` no mayor que `start_minute`, fuera de `0..1440`) | `{ "error": "invalid_request", "message": "avoid[0]: ..." }` |
 | `413` | El cuerpo supera `SCHED_MAX_BODY_BYTES`. Se corta sin procesarlo | `{ "error": "payload_too_large", "message": "..." }` |
 | `422` | Los créditos de los cursos pedidos superan el tope del periodo. No se buscó | `{ "error": "credit_limit_exceeded", "total_credits": 21, "max_credits": 18 }` |
@@ -208,8 +208,10 @@ problema.
 
 Un cuerpo malo (campo ausente, tipo incorrecto, JSON roto) nunca es un `500`.
 
-Limitación conocida (por corregir): con `eligible_courses` vacío la respuesta trae una
-combinación sin grupos (`"schedules": [{"sections": []}]`).
+Sin asignaturas no hay nada que combinar: `eligible_courses` vacío (o un token con `courses`
+vacío) es un `400` con `{ "error": "invalid_request", "message": "se requiere al menos una asignatura" }`,
+en `/combinations` y en `/alternatives`. Con un token válido pero sin cursos es `400` y no `401`: la
+firma es correcta, lo que no tiene sentido es la solicitud.
 
 ### Cuándo `stale` es `true`
 

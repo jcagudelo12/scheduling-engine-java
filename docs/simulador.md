@@ -22,6 +22,7 @@ Con Java (después de `./mvnw verify` o `./mvnw -q -pl simulation -am package -D
 java -jar simulation/target/sched-simulation.jar simulate [escenario.json]
 java -jar simulation/target/sched-simulation.jar load     [escenario.json] [seq]
 java -jar simulation/target/sched-simulation.jar seats    <seq> <grupo> <cupos>
+java -jar simulation/target/sched-simulation.jar demo-catalog --out <escenario.json> [--seed n]
 java -jar simulation/target/sched-simulation.jar experiment --config <json> --out <dir> [--seed n] [--profiles n]
 java -jar simulation/target/sched-simulation.jar calibration --results <results.csv> [--calibration <json>]
 java -jar simulation/target/sched-simulation.jar calibrate --config <json> --out <dir> [--budget n] [--profiles n] [--seed n]
@@ -40,6 +41,7 @@ docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01
 | `simulate` | Carga el escenario en un historial en memoria y calcula las combinaciones de cada estudiante | Tabla con combinaciones y tiempo por estudiante |
 | `load` | Envía los grupos del escenario con `LoadCatalog`. Si no se indica `seq`, usa `catalog_seq` del escenario | `catálogo cargado: seq=1 grupos=7` |
 | `seats` | Envía un `seats_changed` con `SyncChanges` y cierra la conexión | `respuesta del motor: ack seq=2` (o `resync_required` / `rejected`) |
+| `demo-catalog` | `--out <escenario.json> [--seed n]`: exporta una oferta sintética estilo ITM (la del [experimento](#oferta-sintética-estilo-itm)) en el formato de escenario, con créditos y `max_credits`, para cargarla con `load` y probar el [cliente web](inicio-rapido.md#cliente-de-demostración) | Resumen y un estudiante de ejemplo con sus asignaturas |
 | `keygen` | Genera un par de llaves Ed25519 para firmar tokens de prueba | `<kid>.key` (privada) y `<kid>.pem` (pública) |
 | `token` | Imprime un token firmado para `Authorization: Bearer` | El JWT |
 

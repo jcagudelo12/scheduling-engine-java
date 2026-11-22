@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import sched.simulation.analysis.AnalysisCli;
 import sched.simulation.calibration.CalibrationCli;
+import sched.simulation.experiment.DemoCatalog;
 import sched.simulation.experiment.ExperimentCli;
 import sched.simulation.sensitivity.SensitivityCli;
 import sched.proto.institution.v1.LoadCatalogResponse;
@@ -22,6 +23,7 @@ import sched.proto.institution.v1.SyncStatus;
  * java -jar simulation/target/sched-simulation.jar simulate [escenario.json]
  * java -jar simulation/target/sched-simulation.jar load [escenario.json] [seq]
  * java -jar simulation/target/sched-simulation.jar seats &lt;seq&gt; &lt;grupo&gt; &lt;cupos&gt;
+ * java -jar simulation/target/sched-simulation.jar demo-catalog --out &lt;scenario.json&gt; [--seed n]
  * java -jar simulation/target/sched-simulation.jar experiment --config &lt;json&gt; --out &lt;dir&gt; [--seed n] [--profiles n] [--analyze]
  * java -jar simulation/target/sched-simulation.jar calibrate --config &lt;json&gt; --out &lt;dir&gt; [--budget n] [--profiles n] [--seed n]
  * java -jar simulation/target/sched-simulation.jar sensitivity --config &lt;json&gt; --out &lt;dir&gt; [--profiles n] [--replications r]
@@ -51,6 +53,8 @@ public final class Main {
               keygen --out <dir> --kid <kid>     genera un par Ed25519 (<kid>.key privada, <kid>.pem pública)
               token --key <pem> --kid <kid> --student <id> --courses A,B --iss <emisor> --aud <audiencia> [--ttl s]
                                                  imprime un token firmado para Authorization: Bearer (--ttl: 600 s)
+              demo-catalog --out <scenario.json> [--seed n]
+                                                 exporta una oferta sintética (estilo ITM) para el cliente web; cárgala con load
               experiment --config <json> --out <dir> [--seed n] [--profiles n] [--analyze]
                                                  experimento pareado A (reactivo) frente a B (asistido)
               calibrate --config <json> --out <dir> [--budget n] [--profiles n] [--seed n]
@@ -108,6 +112,11 @@ public final class Main {
                         cli.required("--student"), Arrays.asList(cli.required("--courses").split(",")),
                         cli.required("--iss"), cli.required("--aud"),
                         Long.parseLong(cli.options().getOrDefault("--ttl", "600")), Instant.now()));
+            }
+            case "demo-catalog" -> {
+                Cli cli = Cli.parse(args);
+                System.out.println(DemoCatalog.write(Path.of(cli.required("--out")),
+                        Long.parseLong(cli.options().getOrDefault("--seed", "42"))));
             }
             case "experiment" -> designHolds(ExperimentCli.experiment(List.of(args).subList(1, args.length)));
             case "analyze" -> designHolds(AnalysisCli.analyze(List.of(args).subList(1, args.length)));

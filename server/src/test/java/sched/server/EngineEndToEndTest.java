@@ -598,6 +598,52 @@ class EngineEndToEndTest {
     }
 
     @Test
+    @Order(11)
+    void theWebClientIsServedWithoutATokenAndWithSecurityHeadersWhileTheApiStillNeedsOne() throws Exception {
+        ensureCatalog();
+
+        for (String path : new String[] {"/app/", "/app/index.html", "/app/styles.css", "/app/js/main.js", "/app/js/logic.js"}) {
+            var response = get(httpPort, path);
+            assertEquals(200, response.statusCode(), path);
+            var headers = response.headers();
+            var csp = headers.firstValue("Content-Security-Policy").orElseThrow();
+            assertTrue(csp.startsWith("default-src 'self'"), csp);
+            assertFalse(csp.contains("unsafe-inline"), csp);
+            assertEquals("nosniff", headers.firstValue("X-Content-Type-Options").orElseThrow(), path);
+            assertEquals("no-referrer", headers.firstValue("Referrer-Policy").orElseThrow(), path);
+            assertFalse(response.body().isBlank(), path);
+        }
+        var page = get(httpPort, "/app/");
+        assertTrue(page.headers().firstValue("Content-Type").orElseThrow().startsWith("text/html"));
+        assertTrue(page.body().contains("<script type=\"module\" src=\"js/main.js\">"));
+        assertFalse(page.body().matches("(?s).*<script(?![^>]*\\bsrc=)[^>]*>.*"), "no debe haber scripts en línea");
+        assertTrue(get(httpPort, "/app/js/main.js").headers().firstValue("Content-Type").orElseThrow().contains("javascript"));
+        assertEquals(302, get(httpPort, "/app").statusCode());
+
+        // Lo demás sigue exigiendo el token, aunque se parezca a /app.
+        assertEquals(401, post("/combinations", null, "{}").statusCode());
+        assertEquals(401, post("/alternatives", null, "{}").statusCode());
+        assertEquals(401, send(httpPort, "POST", "/app/index.html", null, "{}", null).statusCode());
+        assertEquals(401, get(httpPort, "/app/../combinations").statusCode());
+        assertEquals(401, get(httpPort, "/application").statusCode());
+        // Y la API no lleva la política de las páginas.
+        var api = post("/combinations", token("MAT", "QUI"), "{}");
+        assertEquals(200, api.statusCode());
+        assertTrue(api.headers().firstValue("Content-Security-Policy").isEmpty());
+    }
+
+    @Test
+    @Order(12)
+    void aTokenWithoutCoursesAndAnEmptyCourseListAnswer400() throws Exception {
+        ensureCatalog();
+
+        var emptyToken = post("/combinations", token(), "{}");
+        assertEquals(400, emptyToken.statusCode());
+        assertEquals("se requiere al menos una asignatura", json(emptyToken).get("message").asString());
+        assertEquals(400, post("/alternatives", token(), "{}").statusCode());
+    }
+
+    @Test
     @Order(99)
     void noTokenBodyOrStudentDataReachedTheLogsEvenAtDebugLevel() {
         assertFalse(LOGS.list.isEmpty(), "la prueba debe haber capturado logs");

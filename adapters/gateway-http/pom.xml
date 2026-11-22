@@ -43,4 +43,39 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
+
+    <profiles>
+        <!--
+          Pruebas de la lógica del cliente web (src/test/js) con el ejecutor nativo de Node
+          (Node 22.7 o superior). Opcional: la build normal no necesita Node.
+          Uso: ./mvnw -pl adapters/gateway-http -Pjs-tests test
+        -->
+        <profile>
+            <id>js-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>node-test</id>
+                                <phase>test</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>node</executable>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <arguments>
+                                        <argument>--test</argument>
+                                        <argument>src/test/js/</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

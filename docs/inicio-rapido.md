@@ -214,6 +214,60 @@ volumen, el historial se pierde y la próxima vez hay que volver a hacer `load`.
 Al cambiar código, recompila el módulo y lo que depende de él. Por ejemplo, para el solver:
 `./mvnw -q -pl server -am package -DskipTests`. Ver [CONTRIBUTING.md](../CONTRIBUTING.md).
 
+## Cliente de demostración
+
+El motor sirve un cliente web ligero en `/app/` (HTML, CSS y JavaScript sin framework ni
+dependencias externas) para probar la API a mano: marcar franjas a evitar, ver las combinaciones
+en una grilla semanal, elegir una, indicar grupos ya inscritos o sin cupo y ver las alternativas
+con la explicación de cada cambio. Es un medio de prueba y demostración; el aporte principal es el
+motor. `/app/**` se sirve **sin token** (son archivos estáticos sin datos de estudiantes); la API
+sigue exigiéndolo.
+
+```sh
+# 1. Levantar el motor: desarrollo local sin token (camino C, pasos 1 y 2) o el compose (camino B)
+docker run -d --rm --name sched-nats -p 127.0.0.1:4222:4222 nats:2 -js
+./mvnw -q package -DskipTests
+SCHED_AUTH=none SCHED_GRPC_TLS=disabled java -jar server/target/sched-server.jar
+
+# 2. En otra terminal: generar el catálogo de demostración (oferta sintética estilo ITM, con
+#    créditos y tope) y cargarlo. La semilla (--seed, 42 por defecto) fija la oferta.
+java -jar simulation/target/sched-simulation.jar demo-catalog --out simulation/fixtures/demo.json
+#   catálogo de demostración: semilla=42 asignaturas=134 grupos=271 estudiantes=8 max_credits=20 -> ...
+#   ejemplo para el cliente web: estudiante P0001, asignaturas ... (úsalos en el paso 3)
+java -jar simulation/target/sched-simulation.jar load simulation/fixtures/demo.json --plaintext
+
+# 3. Abrir http://localhost:8080/app/
+```
+
+Sin token (`SCHED_AUTH=none`), escribe un estudiante y las asignaturas que imprimió `demo-catalog`
+(también están en el campo `students` del archivo). Con el compose (camino B, `SCHED_AUTH=jwt`),
+carga el catálogo con el simulador del contenedor
+(`docker compose -f deploy/docker-compose.yml run --rm simulator load simulation/fixtures/demo.json`),
+firma un token con las asignaturas del ejemplo y pégalo en la página, que lo guarda solo en
+`sessionStorage` y muestra sus asignaturas (sin confiar en ellas: el motor valida la firma):
+
+```sh
+TOKEN=$(java -jar simulation/target/sched-simulation.jar token \
+  --key deploy/keys/private/dev-1.key --kid dev-1 --student P0001 --courses <asignaturas del ejemplo> \
+  --iss institucion-dev --aud sched-engine)
+```
+
+Notas de uso:
+
+- **Alertas de cupo.** "Este grupo se quedó sin cupo" pide alternativas de inmediato; para que el
+  motor también vea el cupo en 0, envía el cambio con el simulador (la página muestra el comando
+  exacto): `java -jar simulation/target/sched-simulation.jar seats <seq> <grupo> 0 --plaintext`.
+- **Tiempo máximo (escenario E5).** Cada llamada espera 800 ms; si el motor no responde, la página
+  avisa en menos de 1 s que continúes tu matrícula en la plataforma institucional, sin bloquearse.
+  Para probarlo cambia el plazo: `http://localhost:8080/app/?timeout=1` (1 ms).
+- **Soporte.** Cada llamada envía un `X-Request-Id` y la página lo muestra en los errores.
+- **Pruebas de la lógica del cliente.** La lógica pura está en
+  `adapters/gateway-http/src/main/resources/static/app/js/logic.js`. Con Node 22.7 o superior:
+  `node --test adapters/gateway-http/src/test/js/`, o desde Maven
+  `./mvnw -pl adapters/gateway-http -Pjs-tests test` (perfil opcional; la build normal no necesita Node).
+- Las páginas llevan `Content-Security-Policy: default-src 'self'` (sin scripts ni estilos en
+  línea), `X-Content-Type-Options: nosniff` y `Referrer-Policy: no-referrer`.
+
 ## Configuración
 
 El motor se configura con variables de entorno (ver

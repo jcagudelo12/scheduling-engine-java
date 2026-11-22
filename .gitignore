@@ -12,6 +12,9 @@ __pycache__/
 # Resultados crudos del experimento (los md y los json de resumen de simulation/experiments/ sí se versionan)
 simulation/experiments/**/results.csv
 
+# Catálogo de demostración generado (simulator demo-catalog)
+simulation/fixtures/demo.json
+
 # Salida de JMH ejecutado sin -rff
 jmh-result.*
 

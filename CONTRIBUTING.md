@@ -47,6 +47,7 @@ cambio.
 ./mvnw -q -pl server -am package -DskipTests    # solo el jar del motor (server/target/sched-server-exec.jar)
 ./mvnw -q -pl quality -am verify                # reglas de arquitectura y reporte agregado de cobertura
 ./mvnw -q -pl simulation -am package -DskipTests
+./mvnw -q -pl adapters/gateway-http -Pjs-tests test   # lógica del cliente web con `node --test` (opcional, Node 22.7+)
 java -jar simulation/target/sched-simulation.jar simulate   # probar un cambio del solver sin red
 ```
 

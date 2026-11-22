@@ -17,7 +17,7 @@ import sched.adapters.http.auth.JwtVerifier;
 
 /**
  * Exige {@code Authorization: Bearer <token>} con un token firmado por la institución (ADR 0004)
- * en todo menos {@code /health} y {@code /ready}. Sin token o con uno inválido responde
+ * en todo menos las rutas de {@link PublicPaths} ({@code /health}, {@code /ready} y el cliente web {@code /app/**}). Sin token o con uno inválido responde
  * {@code 401 {"error":"unauthorized"}} con {@code WWW-Authenticate: Bearer}, sin distinguir el
  * motivo ante el cliente. Si es válido deja un {@link VerifiedStudent} como atributo de la solicitud.
  *
@@ -44,8 +44,7 @@ public final class JwtAuthFilter extends OncePerRequestFilter implements Ordered
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        String path = request.getRequestURI();
-        return "/health".equals(path) || "/ready".equals(path);
+        return PublicPaths.isPublic(request);
     }
 
     @Override

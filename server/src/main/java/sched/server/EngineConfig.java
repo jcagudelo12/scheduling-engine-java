@@ -15,6 +15,8 @@ import org.springframework.context.annotation.Configuration;
 import sched.adapters.grpc.catalog.CatalogGrpcService;
 import sched.adapters.grpc.events.CatalogEventsGrpcService;
 import sched.adapters.http.AlternativesController;
+import sched.adapters.http.AppSecurityHeadersFilter;
+import sched.adapters.http.AppWebConfig;
 import sched.adapters.http.BodySizeLimitFilter;
 import sched.adapters.http.CombinationsController;
 import sched.adapters.http.HealthController;
@@ -76,6 +78,18 @@ class EngineConfig {
     @Bean
     RequestIdFilter requestIdFilter() {
         return new RequestIdFilter();
+    }
+
+    /** Cabeceras de seguridad del cliente web de demostración ({@code /app/**}). */
+    @Bean
+    AppSecurityHeadersFilter appSecurityHeadersFilter() {
+        return new AppSecurityHeadersFilter();
+    }
+
+    /** {@code /app/} sirve el {@code index.html} del cliente web (recursos estáticos del adaptador HTTP). */
+    @Bean
+    AppWebConfig appWebConfig() {
+        return new AppWebConfig();
     }
 
     // Historial compartido y réplica local (todas las instancias).
