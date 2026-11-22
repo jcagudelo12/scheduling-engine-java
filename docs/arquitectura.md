@@ -71,7 +71,7 @@ sequenceDiagram
     participant Q as engine (query)
     participant EST as Estudiante
 
-    Note over Q: Al arrancar lee el historial.<br/>Cuando no queda nada pendiente, /ready = 200
+    Note over Q: Al arrancar lee el historial.<br/>Cuando no queda nada pendiente y hay catálogo fresco, /ready = 200
     SDK->>ING: LoadCatalog(seq=1, grupos…)
     ING->>LOG: Snapshot(seq=1) y purga lo anterior
     LOG-->>Q: Snapshot(seq=1)

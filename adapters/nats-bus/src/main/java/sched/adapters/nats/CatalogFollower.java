@@ -23,7 +23,8 @@ import sched.proto.engine.v1.SnapshotChunk;
 
 /**
  * Lee el historial desde el principio (la última carga completa) y lo aplica a la réplica
- * local. Marca la instancia como lista cuando ya no quedan mensajes pendientes.
+ * local. Marca el follower como al día cuando ya no quedan mensajes pendientes y deja de estarlo si se
+ * pierde la conexión (la instancia lista además exige una réplica fresca, ver {@code Readiness}).
  */
 public final class CatalogFollower implements AutoCloseable {
 
@@ -63,6 +64,7 @@ public final class CatalogFollower implements AutoCloseable {
                 if (!running) {
                     return;
                 }
+                readiness.markBehind();
                 applyEntry(new CatalogLogEntry.SyncLost());
                 try {
                     Thread.sleep(RETRY_DELAY);
@@ -83,10 +85,11 @@ public final class CatalogFollower implements AutoCloseable {
     }
 
     private void follow() throws Exception {
+        readiness.markBehind();
         var jsm = connection.jetStreamManagement();
         if (jsm.getStreamInfo(streamName).getStreamState().getMsgCount() == 0) {
             // Historial vacío: no hay nada que esperar, aunque tampoco hay catálogo aún.
-            readiness.markReady();
+            readiness.markCaughtUp();
         }
 
         var consumer = connection.getStreamContext(streamName)
@@ -111,9 +114,9 @@ public final class CatalogFollower implements AutoCloseable {
                     log.error("entrada del historial ilegible: {}", e.getMessage());
                 }
 
-                if (caughtUp && !readiness.isReady()) {
+                if (caughtUp && !readiness.isCaughtUp()) {
                     log.info("réplica al día con el historial");
-                    readiness.markReady();
+                    readiness.markCaughtUp();
                 }
             }
         }

@@ -60,8 +60,8 @@ class EngineConfig {
     }
 
     @Bean
-    Readiness readiness() {
-        return new Readiness();
+    Readiness readiness(CatalogReplica replica) {
+        return new Readiness(replica);
     }
 
     @Bean(initMethod = "start", destroyMethod = "close")

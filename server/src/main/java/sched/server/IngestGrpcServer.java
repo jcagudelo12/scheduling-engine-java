@@ -35,7 +35,7 @@ final class IngestGrpcServer {
     void start() {
         starter = Thread.ofVirtual().name("ingest-starter").start(() -> {
             try {
-                while (!readiness.isReady()) {
+                while (!readiness.isCaughtUp()) {
                     Thread.sleep(100);
                 }
                 var builder = Grpc.newServerBuilderForPort(port, InsecureServerCredentials.create())

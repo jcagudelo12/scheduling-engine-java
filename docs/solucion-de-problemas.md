@@ -72,7 +72,7 @@ java -jar simulation/target/sched-simulation.jar load
 docker compose -f deploy/docker-compose.yml run --rm simulator load
 ```
 
-`/ready` puede estar en `200` y aun así no haber catálogo: ver [api-http.md](api-http.md#sondas).
+`/ready` responde `503` mientras no haya catálogo: ver [api-http.md](api-http.md#sondas).
 
 ### El simulador dice `error: UNAVAILABLE: io exception`
 
@@ -87,7 +87,8 @@ Comprueba que:
 ### Las respuestas llegan con `stale: true`
 
 Es esperado después de usar `seats` del simulador, porque cierra la conexión de cambios, o
-después de un hueco de `seq`. Se corrige con el siguiente cambio en orden o con un `load`. Ver
+después de un hueco de `seq`. Mientras tanto `/ready` responde `503` y el balanceador deja de
+enviar tráfico a la réplica; si todas están `stale`, no queda ninguna lista hasta el `load`. Se corrige con el siguiente cambio en orden o con un `load`. Ver
 [api-http.md](api-http.md#cuándo-stale-es-true).
 
 ### `schedules` llega vacío
@@ -108,7 +109,8 @@ El `seq` que enviaste no es el siguiente esperado. El mensaje dice cuál se espe
 ### Las réplicas `engine` no pasan a `healthy`
 
 El healthcheck consulta `/ready`, que responde `200` cuando la réplica terminó de leer el
-historial de NATS. Revisa los logs:
+historial de NATS y tiene un catálogo fresco (por eso, con el historial vacío, no pasan a
+`healthy` hasta la primera carga con `load`). Revisa los logs:
 
 ```sh
 docker compose -f deploy/docker-compose.yml logs engine

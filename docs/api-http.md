@@ -270,8 +270,11 @@ curl -X POST localhost:8080/alternatives -H 'content-type: application/json' \
 | Endpoint | Responde `200` cuando | Si no | Lo usa |
 |---|---|---|---|
 | `GET /health` | El proceso está vivo | | Orquestador (liveness) |
-| `GET /ready` | La réplica ya leyó todo el historial de NATS | `503` | Healthcheck de Docker, Traefik y readiness en Kubernetes |
+| `GET /ready` | La réplica está al día: leyó el historial de NATS, tiene un catálogo cargado y no está `stale` | `503` | Healthcheck de Docker, Traefik y readiness en Kubernetes |
 
-`/ready` no indica si hay catálogo cargado: con el historial vacío la instancia está lista
-(no tiene nada que leer), pero `/combinations` responde `503` hasta la primera carga. Ver
-[ADR 0005](adr/0005-varias-instancias-con-historial-compartido.md).
+`/ready` refleja el estado **actual**, no solo el arranque. Responde `503` mientras no haya
+catálogo cargado (historial vacío), si se pierde la sincronía (hueco de `seq`, cierre del
+stream de cambios, caída de NATS en el follower) y mientras la instancia relee el historial.
+Vuelve a `200` cuando se aplica una carga completa (o, si solo se cerró el stream sin hueco,
+con el siguiente cambio en orden). Así el balanceador no envía tráfico a una réplica `stale`.
+Ver [ADR 0005](adr/0005-varias-instancias-con-historial-compartido.md).
