@@ -137,7 +137,7 @@ flowchart TB
 | Módulo | Qué contiene | Depende de |
 |---|---|---|
 | `domain` | Modelo puro: `Catalog`, `Section`, `TimeSlot`, `CatalogEvent`. Sin dependencias externas | nada |
-| `solver` | `BacktrackingSolver`: búsqueda de combinaciones sin cruces | `domain` |
+| `solver` | `ForwardCheckingSolver` y `BacktrackingSolver`: búsqueda de combinaciones sin cruces | `domain` |
 | `application` | Casos de uso, `CatalogReplica` y el puerto `CatalogLog` | `domain`, `solver` |
 | `proto` | Los `.proto` y `Convert`, que traduce entre protobuf y el dominio | `domain` |
 | `adapters/*` | Traducen el mundo exterior (HTTP, gRPC, NATS) a llamadas a los casos de uso | `application`, `proto` |
@@ -152,9 +152,25 @@ Para entender el código, conviene leerlo en este orden:
 1. **Modelo** — [`Catalog`](../domain/src/main/java/sched/domain/Catalog.java): el catálogo
    en memoria. `apply` aplica un cambio respetando el orden de `seq` y `openSectionsOf`
    devuelve los grupos con cupo de unos cursos.
-2. **Búsqueda** — [`BacktrackingSolver`](../solver/src/main/java/sched/solver/BacktrackingSolver.java):
-   para cada curso prueba sus grupos y descarta los que se cruzan con lo ya elegido. Se
-   detiene al llegar a `SCHED_MAX_COMBINATIONS`.
+2. **Búsqueda** — [`ForwardCheckingSolver`](../solver/src/main/java/sched/solver/ForwardCheckingSolver.java)
+   (por defecto, `SCHED_SOLVER=forward-checking`): búsqueda con retroceso donde cada curso es
+   una variable y sus grupos son su dominio. Las franjas de cada grupo se codifican como un
+   vector de bits exacto ([`SlotBitmaps`](../solver/src/main/java/sched/solver/SlotBitmaps.java):
+   dos grupos se cruzan si y solo si el AND de sus máscaras no es cero) y los conflictos entre
+   grupos se precalculan. Al elegir un grupo se quitan de los demás cursos los que chocan con
+   él (forward checking); si un dominio queda vacío se retrocede de inmediato. Se asigna
+   primero el curso con menos grupos restantes (MRV) y sus grupos se prueban por menor costo y
+   luego por id, de modo que la salida es determinista.
+
+   `Problem` admite un `SectionCost` opcional (no negativo, aditivo por curso). Con costo, el
+   solver devuelve las `SCHED_MAX_COMBINATIONS` combinaciones de menor costo total con
+   ramificación y poda (cota = costo parcial + menor costo posible de cada curso pendiente);
+   sin costo se detiene en cuanto reúne las primeras. `solveScored` expone el costo de cada
+   resultado. [`BacktrackingSolver`](../solver/src/main/java/sched/solver/BacktrackingSolver.java)
+   (`SCHED_SOLVER=backtracking`) es la línea base: enumera y poda por cruce par a par; con costo
+   enumera todo y ordena. Los microbenchmarks los comparan
+   ([`SolverComparisonBenchmark`](../benchmarks/src/main/java/sched/benchmarks/SolverComparisonBenchmark.java);
+   ver [bench/README.md](../bench/README.md#comparar-los-solvers)).
 3. **Casos de uso** (en [`application`](../application/src/main/java/sched/application/)):
 
    | Clase | Cuándo se ejecuta | Qué hace |
