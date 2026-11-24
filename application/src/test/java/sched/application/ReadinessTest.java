@@ -113,4 +113,53 @@ class ReadinessTest {
         apply.execute(change(101));
         assertTrue(readiness.isReady());
     }
+
+    @Test
+    void withWarmupItIsNotReadyUntilMarkedWarmed() throws Exception {
+        readiness = new Readiness(replica, true);
+        apply.execute(snapshot(100));
+        readiness.markCaughtUp();
+
+        assertTrue(readiness.isCatalogReady(), "el catálogo está al día: dispara el calentamiento");
+        assertFalse(readiness.isWarmedUp());
+        assertFalse(readiness.isReady(), "al día pero sin calentar");
+
+        readiness.markWarmedUp();
+        assertTrue(readiness.isReady());
+    }
+
+    @Test
+    void warmupDoesNotMakeAnUnsyncedInstanceReady() throws Exception {
+        readiness = new Readiness(replica, true);
+        readiness.markWarmedUp();
+        assertFalse(readiness.isReady(), "calentada pero sin follower ni catálogo");
+        readiness.markCaughtUp();
+        assertFalse(readiness.isReady(), "sin catálogo");
+        apply.execute(snapshot(100));
+        assertTrue(readiness.isReady());
+    }
+
+    @Test
+    void itDoesNotWarmAgainAfterGoingStaleAndRecovering() throws Exception {
+        readiness = new Readiness(replica, true);
+        apply.execute(snapshot(100));
+        readiness.markCaughtUp();
+        readiness.markWarmedUp();
+        assertTrue(readiness.isReady());
+
+        apply.execute(new CatalogLogEntry.SyncLost());
+        assertFalse(readiness.isReady());
+        assertTrue(readiness.isWarmedUp(), "stale no borra el calentamiento");
+        assertFalse(readiness.isCatalogReady());
+
+        apply.execute(snapshot(110));
+        assertTrue(readiness.isReady(), "se recupera sin calentar de nuevo");
+    }
+
+    @Test
+    void withoutWarmupTheInstanceCountsAsWarmed() {
+        assertTrue(new Readiness(replica).isWarmedUp());
+        assertTrue(new Readiness(replica, false).isWarmedUp());
+        assertFalse(new Readiness(replica, true).isWarmedUp());
+    }
 }

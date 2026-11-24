@@ -91,6 +91,11 @@ public final class Catalog {
         return entry == null ? OptionalInt.empty() : OptionalInt.of(entry.available());
     }
 
+    /** Asignaturas que tienen al menos un grupo en el catálogo, ordenadas por id (lectura; no modifica nada). */
+    public List<CourseId> courseIds() {
+        return byCourse.keySet().stream().sorted().toList();
+    }
+
     /** El grupo con ese id, tenga o no cupo; vacío si no está en el catálogo. */
     public Optional<Section> sectionOf(SectionId id) {
         Entry entry = entries.get(id);

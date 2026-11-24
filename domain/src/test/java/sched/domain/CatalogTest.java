@@ -26,6 +26,19 @@ class CatalogTest {
     }
 
     @Test
+    void courseIdsListsCoursesWithSectionsSortedById() throws Exception {
+        Catalog catalog = Catalog.load(1, List.of(
+                new SectionSeats(section("QUI-01", "QUI"), 5),
+                new SectionSeats(section("MAT-01", "MAT"), 0),
+                new SectionSeats(section("MAT-02", "MAT"), 5)));
+        assertEquals(List.of(new CourseId("MAT"), new CourseId("QUI")), catalog.courseIds());
+
+        catalog.apply(new CatalogEvent(2, new CatalogChange.SectionRemoved(new SectionId("QUI-01"))));
+        assertEquals(List.of(new CourseId("MAT")), catalog.courseIds(), "un curso sin grupos ya no figura");
+        assertTrue(Catalog.load(1, List.of()).courseIds().isEmpty());
+    }
+
+    @Test
     void appliesEventsInOrder() throws Exception {
         Catalog catalog = Catalog.load(10, List.of(new SectionSeats(section("MAT-01", "MAT"), 5)));
 
