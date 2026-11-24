@@ -1,5 +1,7 @@
 # Cómo contribuir
 
+> **Términos técnicos.** Maven, gRPC, NATS, ArchUnit, JaCoCo, Testcontainers, ADR y Conventional Commits están explicados desde cero en [docs/conceptos-base.md](docs/conceptos-base.md); el vocabulario del dominio, en el [glosario](docs/glosario.md).
+
 Convenciones para trabajar en el motor. Para correrlo, empieza por
 [docs/inicio-rapido.md](docs/inicio-rapido.md); para entender cómo está armado,
 [docs/arquitectura.md](docs/arquitectura.md).
@@ -48,7 +50,7 @@ cambio.
 ./mvnw -q -pl quality -am verify                # reglas de arquitectura y reporte agregado de cobertura
 ./mvnw -q -pl simulation -am package -DskipTests
 ./mvnw -q -pl adapters/gateway-http -Pjs-tests test   # lógica del cliente web con `node --test` (opcional, Node 22.7+)
-java -jar simulation/target/sched-simulation.jar simulate   # probar un cambio del solver sin red
+java -jar simulation/target/sched-simulation.jar simulate   # ver el resultado de un escenario sin red (usa BacktrackingSolver, no el solver por defecto)
 ```
 
 `-pl` elige el módulo y `-am` compila también los módulos de los que depende. Al filtrar una
@@ -163,6 +165,13 @@ Cómo hacerlo:
 2. Empieza con estado **Propuesto** y discútelo en el pull request.
 3. Al aprobarlo, pasa a **Aceptado**. Un ADR aceptado no se reescribe: si la decisión cambia, se
    crea uno nuevo que lo reemplaza y se actualiza el estado del anterior.
+4. Lo que sí se permite en un ADR aceptado son **notas fechadas** al final (`## Nota de
+   implementación (AAAA-MM-DD)` o `## Nota de revisión (AAAA-MM-DD)`) que cuentan qué parte ya se
+   hizo o qué dato nuevo matiza la decisión, sin borrar ni cambiar el texto original. Ejemplos:
+   [ADR 0004](docs/adr/0004-contexto-del-estudiante-en-token-firmado.md#nota-de-implementación-2026-11-22) y
+   [ADR 0006](docs/adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md#nota-de-implementación-2026-11-23).
+   Solo el estado (la línea `Estado:`) se actualiza en el texto original.
+   Si lo decidido cambia de verdad, el camino sigue siendo un ADR nuevo.
 
 ## Contrato gRPC
 
@@ -189,3 +198,7 @@ código que describe:
 | Módulos o flujo de datos | [docs/arquitectura.md](docs/arquitectura.md) |
 | El formato de escenarios o el simulador | [docs/simulador.md](docs/simulador.md) |
 | Un término nuevo del dominio | [docs/glosario.md](docs/glosario.md) |
+| Una tecnología nueva | [docs/conceptos-base.md](docs/conceptos-base.md) (una sección con qué es, para qué se usa, dónde está y cómo verla) y la tabla de tecnologías del [README](README.md#tecnologías) |
+| Qué contiene, de qué depende o cómo se prueba un módulo | El `README.md` de ese módulo |
+| Una decisión de arquitectura | Un [ADR](docs/adr/README.md) nuevo |
+| Una cifra de rendimiento | [bench/README.md](bench/README.md#en-qué-condiciones-se-midió-cada-cifra) con las condiciones de la medición (token, calentamiento, catálogo, fecha ISO) |
