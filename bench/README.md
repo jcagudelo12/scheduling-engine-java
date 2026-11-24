@@ -137,6 +137,59 @@ Resultado resumido (2026-11-22, **sin token y con la JVM fría**, perfil `itm`, 
 Los datos crudos (`bench/results/pico_*`, `worst_*`) están en `.gitignore`: solo se versionan los resúmenes,
 en [`results/report-pico.md`](results/report-pico.md).
 
+## Seguir una prueba en vivo
+
+Mientras corre una prueba de carga puedes verla desde el navegador, con dos herramientas que se
+activan con una variable y que **por defecto están apagadas** (sin ellas los scripts hacen exactamente lo
+de siempre). Qué es cada una: [Grafana](../docs/conceptos-base.md#grafana),
+[cAdvisor](../docs/conceptos-base.md#cadvisor) y [panel web de k6](../docs/conceptos-base.md#panel-web-de-k6).
+
+| Variable | Qué activa | Dónde mirar |
+|---|---|---|
+| `OBSERVE=1` | Prometheus, Grafana y cAdvisor junto al compose del pico (`docker-compose.observe.yml`), con el mismo tablero "Motor de horarios" de `deploy/`. Solo en `run-pico.sh` | <http://127.0.0.1:3000>, usuario `admin` |
+| `K6_DASHBOARD=1` | El panel web de k6 (lo que mide el generador de carga) y, al terminar, su reporte HTML. En `run-pico.sh` y `run.sh` | <http://127.0.0.1:5665> |
+
+```sh
+OBSERVE=1 K6_DASHBOARD=1 bench/run-pico.sh                        # las dos cosas, con los pasos por defecto
+OBSERVE=1 K6_DASHBOARD=1 STEPS="1:2000" bench/run-pico.sh         # un solo paso: más fácil de seguir
+K6_DASHBOARD=1 bench/run.sh                                       # solo el panel de k6 en la prueba simple
+```
+
+Cómo seguirla:
+
+1. Lanza el comando. Al empezar, el script imprime la dirección de Grafana y, en cada paso, la del panel de k6.
+2. **Abre Grafana** (<http://127.0.0.1:3000>). La contraseña es `GRAFANA_ADMIN_PASSWORD` de `deploy/.env` (la crea
+   `deploy/setup-dev.sh`); si no existe ese archivo, el script genera una solo para esa corrida y la imprime.
+   El tablero se abre solo, con refresco de 5 s. Las réplicas aparecen como `engine1`, `engine2`, `engine3`.
+3. **Abre el panel de k6** (<http://127.0.0.1:5665>): solo existe mientras k6 corre (arranca unos segundos
+   después del comando, cuando el motor ya está listo). Si lo abres antes, recarga.
+4. Qué mirar: la rampa en **Tráfico**, la **latencia p99 frente a la línea de 200 ms**, la **CPU de cada
+   contenedor** (el motor sube hasta su tope de 2 núcleos cuando se satura) y, en **Catálogo**, los eventos de la
+   ráfaga de cupos. Cada panel trae una descripción de qué significa y qué valor es bueno.
+5. **Cada paso levanta todo de cero** (también Prometheus y Grafana): al cambiar de paso el tablero se queda sin
+   datos unos segundos y la gráfica empieza de nuevo. Al terminar el script, Grafana se apaga con el resto.
+
+**El reporte HTML de k6** queda en `bench/results/<prefijo>_r<réplicas>_t<tasa>_k6_dashboard.html`
+(`run.sh`: `java_rep<n>_r<tasa>_k6_dashboard.html`, uno por tasa y repetición). Es un solo archivo: ábrelo con el navegador, sin
+servidor. Está en `.gitignore` (no se versiona).
+
+Variables de ajuste (todas opcionales):
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `OBSERVE_CPUS` | `2,3` | Núcleos de Prometheus, Grafana y cAdvisor |
+| `GRAFANA_PORT`, `PROMETHEUS_PORT` | `3000`, `9090` | Puerto en `127.0.0.1` si el tuyo ya está ocupado |
+| `K6_DASHBOARD_PORT` | `5665` | Puerto del panel de k6 en `127.0.0.1` |
+
+**Observar consume CPU, y eso puede alterar la medición.** Con la distribución de núcleos por defecto los 16 hilos
+de la máquina de referencia ya están asignados (Traefik `0-3`, motores, NATS y k6 el resto): Grafana, Prometheus y
+cAdvisor van fijados a `OBSERVE_CPUS` (`2,3`), que **no son núcleos de ningún motor ni de k6**, pero sí de Traefik, y cAdvisor mide cada
+5 s todos los contenedores. El panel web de k6 también gasta algo en los núcleos de k6. Por eso **una corrida con `OBSERVE=1` o
+`K6_DASHBOARD=1` sirve para entender y depurar, no para citar cifras**: las cifras oficiales ([resultados](#resultados-2026-10-06),
+[`report-pico.md`](results/report-pico.md)) se miden con ambas variables apagadas. En otra máquina, elige `OBSERVE_CPUS`
+con núcleos que no uses (ver [Ajustar los núcleos](#ajustar-los-núcleos-a-tu-máquina)). Los contenedores de observación se llaman
+`obs-*` (no `bench-pico-*`) para que el muestreo de `docker stats` de los resultados no los mezcle.
+
 ## En qué condiciones se midió cada cifra
 
 Las cifras de rendimiento que aparecen en este repositorio **no son comparables entre sí** si no se

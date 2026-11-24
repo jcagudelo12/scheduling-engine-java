@@ -28,9 +28,9 @@ el código.
 8. [JWT y Bearer](#jwt-y-bearer) · [Ed25519](#firma-eddsa-ed25519-y-llaves-pública-y-privada) · [`kid`](#kid-el-identificador-de-la-llave) · [BouncyCastle](#bouncycastle)
 9. [NATS y JetStream](#nats-y-jetstream)
 10. [Docker](#docker) · [Compose](#docker-compose) · [Healthcheck](#healthcheck) · [Traefik](#traefik) · [Kubernetes](#kubernetes-solo-como-guía)
-11. [Prometheus, Micrometer y métricas](#prometheus-micrometer-y-métricas) · [Logs y ECS](#logs-y-formato-ecs)
+11. [Prometheus, Micrometer y métricas](#prometheus-micrometer-y-métricas) · [Grafana](#grafana) · [cAdvisor](#cadvisor) · [Logs y ECS](#logs-y-formato-ecs)
 12. [Pruebas](#pruebas-automáticas): [JUnit 5](#junit-5) · [jqwik](#pruebas-basadas-en-propiedades-jqwik) · [Testcontainers](#testcontainers) · [ArchUnit](#archunit) · [JaCoCo](#jacoco-y-la-cobertura)
-13. [Medición de rendimiento](#medición-de-rendimiento): [JMH](#jmh) · [k6](#k6) · [async-profiler y JFR](#async-profiler-y-jfr) · [Python y matplotlib](#python-y-matplotlib)
+13. [Medición de rendimiento](#medición-de-rendimiento): [JMH](#jmh) · [k6](#k6) · [Panel web de k6](#panel-web-de-k6) · [async-profiler y JFR](#async-profiler-y-jfr) · [Python y matplotlib](#python-y-matplotlib)
 14. [GitHub Actions](#github-actions-integración-continua)
 15. [El problema del horario y el solver](#el-problema-del-horario-y-el-solver): [CSP](#csp-problema-de-satisfacción-de-restricciones) · [Backtracking](#backtracking) · [Forward checking](#forward-checking) · [MRV](#mrv) · [Ramificación y poda](#ramificación-y-poda)
 16. [Estadística del simulador, a nivel intuitivo](#estadística-del-simulador-a-nivel-intuitivo)
@@ -606,11 +606,11 @@ docker images | grep sched           # tamaño de la imagen (~590 MB)
 **Qué es.** Una herramienta para describir **varios contenedores a la vez** en un archivo YAML
 (`docker-compose.yml`) y manejarlos juntos con un comando. Define *servicios* (cada uno es un tipo de
 contenedor), con su imagen, variables, redes, volúmenes y qué depende de qué. Un **perfil** (*profile*)
-es una etiqueta que hace que ciertos servicios solo arranquen si lo pides: Prometheus está en el perfil
-`observability` y no arranca con un `up` normal.
+es una etiqueta que hace que ciertos servicios solo arranquen si lo pides: Prometheus, Grafana y cAdvisor
+están en el perfil `observability` y no arrancan con un `up` normal.
 
 **Para qué lo usamos.** `deploy/docker-compose.yml` levanta NATS, la ingesta, tres instancias de consulta
-(`engine`, escalable con `--scale engine=5`), Traefik (`lb`) y, bajo demanda, Prometheus y el simulador
+(`engine`, escalable con `--scale engine=5`), Traefik (`lb`) y, bajo demanda, Prometheus, Grafana, cAdvisor y el simulador
 de institución.
 
 **Dónde aparece.** `deploy/docker-compose.yml`, `bench/docker-compose.yml`, `bench/docker-compose.pico.yml`.
@@ -704,8 +704,52 @@ Micrometer, `application` define un puerto `EngineMetrics` y `server` lo impleme
 docker compose -f deploy/docker-compose.yml --profile observability up -d   # abre http://localhost:9090
 ```
 
+Prometheus muestra números y gráficas básicas; para seguir el motor con un tablero listo, mira
+[Grafana](#grafana).
+
 **Para aprender más.** [prometheus.io/docs](https://prometheus.io/docs/introduction/overview/) y
 [micrometer.io](https://micrometer.io/docs).
+
+## Grafana
+
+**Qué es.** Un programa web que **dibuja gráficas** a partir de datos que ya guarda otro sistema (aquí,
+Prometheus). Un **tablero** (*dashboard*) es una página con muchas gráficas (**paneles**) agrupadas en
+filas; se actualiza sola cada pocos segundos, así que sirve para *ver en vivo* qué hace el motor.
+Prometheus guarda las métricas; Grafana solo las muestra.
+
+**Para qué lo usamos.** Para seguir las pruebas y el despliegue desde el navegador, sin escribir
+consultas: el tablero **"Motor de horarios"** ya viene armado (tráfico, latencia frente a la meta de
+200 ms, búsqueda, recursos por contenedor, JVM y catálogo) y cada panel tiene una descripción de qué
+significa y qué valor es bueno (pasa el ratón sobre la "i" del título). Se configura **como código**: el
+origen de datos y el tablero están en archivos de `deploy/grafana/`, así que al abrir Grafana ya están,
+en cualquier equipo. Tiene usuario y contraseña (sin acceso anónimo) y solo se abre desde tu propio
+equipo (`127.0.0.1`).
+
+**Dónde aparece.** Servicio `grafana` del perfil `observability` en `deploy/docker-compose.yml`,
+`deploy/grafana/` y `bench/docker-compose.observe.yml`.
+
+**Cómo verlo.** Paso a paso en [inicio-rapido.md](inicio-rapido.md#ver-el-motor-en-el-navegador).
+
+**Para aprender más.** [grafana.com/docs/grafana](https://grafana.com/docs/grafana/latest/).
+
+## cAdvisor
+
+**Qué es.** Un programa de Google que **mide cuánta CPU, memoria y red usa cada contenedor** de Docker
+(*Container Advisor*). Prometheus le pide esas cifras igual que a los motores.
+
+**Para qué lo usamos.** Las métricas del motor dicen qué pasa *dentro* de Java; cAdvisor dice cuánto
+consume cada contenedor *desde fuera* (el motor, NATS, la ingesta, Traefik). Con eso se ve, por ejemplo,
+si una réplica ya usa todos sus núcleos. Alimenta la fila "Recursos por contenedor" del tablero.
+
+**Aviso de seguridad.** Para medir contenedores necesita **leer el sistema de tu equipo** (carpetas
+`/sys`, `/var/lib/docker` y otras, siempre en solo lectura). Es un riesgo aceptado **solo para
+desarrollo**: no tiene puertos abiertos al exterior (solo Prometheus lo consulta, por la red interna de
+Docker), pero no lo uses así en un servidor real.
+
+**Dónde aparece.** Servicio `cadvisor` en `deploy/docker-compose.yml` y en `bench/docker-compose.observe.yml`;
+su trabajo (*job*) en `deploy/prometheus/prometheus.yml`.
+
+**Para aprender más.** [github.com/google/cadvisor](https://github.com/google/cadvisor).
 
 ## Logs y formato ECS
 
@@ -843,6 +887,24 @@ rampa y meseta del "pico de matrícula" están en `bench/load-pico.js`). No se i
 contenedor (`grafana/k6`).
 
 **Para aprender más.** [grafana.com/docs/k6](https://grafana.com/docs/k6/latest/).
+
+### Panel web de k6
+
+**Qué es.** Una página que el propio k6 abre **mientras corre** la prueba: muestra en vivo solicitudes
+por segundo, latencia, errores y usuarios virtuales, y al terminar puede guardar todo como un
+**reporte HTML** de un solo archivo. Viene incluido en k6 (versión usada aquí: 2.x); no hay que instalar
+nada.
+
+**Para qué lo usamos.** Para ver *desde el lado del cliente* cómo va la prueba de carga (lo que mide
+k6), mientras el [tablero de Grafana](#grafana) muestra lo que pasa *dentro* del motor. Los dos se
+complementan. Se activa con `K6_DASHBOARD=1`; solo se abre desde tu equipo (`127.0.0.1:5665`).
+
+**Dónde aparece.** `bench/run-pico.sh` y `bench/run.sh` (variable `K6_DASHBOARD`); el reporte queda en
+`bench/results/*_k6_dashboard.html` (no se versiona).
+
+**Cómo verlo.** Ver [Seguir una prueba en vivo](../bench/README.md#seguir-una-prueba-en-vivo).
+
+**Para aprender más.** [Web dashboard de k6](https://grafana.com/docs/k6/latest/results-output/web-dashboard/).
 
 ### async-profiler y JFR
 

@@ -116,6 +116,9 @@ Cada término se explica con calma en [conceptos-base.md](conceptos-base.md).
 | [**Traefik**](conceptos-base.md#traefik) | Balanceador de carga con límites por IP, de solicitudes simultáneas y de tamaño |
 | [**Kubernetes**](conceptos-base.md#kubernetes-solo-como-guía) | Orquestador de contenedores (solo guía): *pod*, sondas de preparación/vida/arranque y *rolling update* |
 | [**Prometheus / Micrometer**](conceptos-base.md#prometheus-micrometer-y-métricas) | Micrometer registra métricas en el código y Prometheus las recoge y consulta |
+| [**Grafana / tablero**](conceptos-base.md#grafana) | Programa web que dibuja gráficas en vivo; un tablero (*dashboard*) es una página de paneles, aquí "Motor de horarios" |
+| [**cAdvisor**](conceptos-base.md#cadvisor) | Mide CPU, memoria y red de cada contenedor de Docker |
+| [**Panel web de k6**](conceptos-base.md#panel-web-de-k6) | Página en vivo de k6 durante una prueba de carga y reporte HTML al final |
 | [**p99**](conceptos-base.md#prometheus-micrometer-y-métricas) | Percentil 99 de la latencia: el 99 % de las solicitudes tardó menos que este valor |
 | [**Logback / ECS**](conceptos-base.md#logs-y-formato-ecs) | Librería de logs y estándar de campos para logs en JSON (`SCHED_LOG_FORMAT=json`) |
 | [**JUnit 5**](conceptos-base.md#junit-5) | Marco de pruebas de Java |

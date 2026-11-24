@@ -270,9 +270,10 @@ Cada nombre enlaza a su explicación desde cero en [docs/conceptos-base.md](docs
 | [Docker](docs/conceptos-base.md#docker), [Compose](docs/conceptos-base.md#docker-compose) y [Traefik](docs/conceptos-base.md#traefik) | Imagen única, despliegue con varias instancias y balanceo; [healthcheck](docs/conceptos-base.md#healthcheck) |
 | [Kubernetes](docs/conceptos-base.md#kubernetes-solo-como-guía) | Solo como guía de configuración recomendada (no se despliega con él todavía) |
 | [Prometheus, Micrometer y Actuator](docs/conceptos-base.md#prometheus-micrometer-y-métricas) | Métricas en un puerto de administración aparte |
+| [Grafana](docs/conceptos-base.md#grafana) y [cAdvisor](docs/conceptos-base.md#cadvisor) | Tablero "Motor de horarios" para ver el motor en vivo, con CPU y memoria por contenedor ([cómo verlo](docs/inicio-rapido.md#ver-el-motor-en-el-navegador)) |
 | [Logback y formato ECS](docs/conceptos-base.md#logs-y-formato-ecs) | Logs de texto o JSON con id de correlación |
 | [JUnit 5](docs/conceptos-base.md#junit-5), [jqwik](docs/conceptos-base.md#pruebas-basadas-en-propiedades-jqwik), [Testcontainers](docs/conceptos-base.md#testcontainers), [ArchUnit](docs/conceptos-base.md#archunit), [JaCoCo](docs/conceptos-base.md#jacoco-y-la-cobertura) | Pruebas, propiedades, integración con NATS real, reglas de arquitectura y cobertura |
-| [JMH](docs/conceptos-base.md#jmh), [k6](docs/conceptos-base.md#k6), [async-profiler y JFR](docs/conceptos-base.md#async-profiler-y-jfr), [Python y matplotlib](docs/conceptos-base.md#python-y-matplotlib) | Microbenchmarks, prueba de carga, perfilado y gráficas |
+| [JMH](docs/conceptos-base.md#jmh), [k6](docs/conceptos-base.md#k6) (con su [panel web](docs/conceptos-base.md#panel-web-de-k6)), [async-profiler y JFR](docs/conceptos-base.md#async-profiler-y-jfr), [Python y matplotlib](docs/conceptos-base.md#python-y-matplotlib) | Microbenchmarks, prueba de carga, perfilado y gráficas |
 | [GitHub Actions](docs/conceptos-base.md#github-actions-integración-continua) | Integración continua (`./mvnw verify`) |
 | [El solver (CSP)](docs/conceptos-base.md#el-problema-del-horario-y-el-solver) | Backtracking, forward checking, MRV y ramificación y poda |
 | [Estadística](docs/conceptos-base.md#estadística-del-simulador-a-nivel-intuitivo) y Apache Commons Statistics | Análisis del experimento del simulador |

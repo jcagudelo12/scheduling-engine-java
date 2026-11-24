@@ -167,11 +167,74 @@ docker compose -f deploy/docker-compose.yml up -d --scale engine=5
 | `ingest` | `ingest`: recibe los datos de la institución (una sola instancia); solo con mTLS | gRPC `50051` (TLS con certificado de cliente obligatorio) |
 | `engine` | `query`: atiende estudiantes con token firmado; escalable | ninguno, solo red interna |
 | `lb` | Traefik frente a `engine`; solo enruta a réplicas `healthy`; límites por IP y de cuerpo | HTTP `8080` |
+| `prometheus`, `grafana`, `cadvisor` | Solo con `--profile observability`: métricas, tableros y consumo por contenedor ([ver el motor en el navegador](#ver-el-motor-en-el-navegador)) | `127.0.0.1:9090` (Prometheus) y `127.0.0.1:3000` (Grafana); cAdvisor ninguno |
 | `simulator` | Institución simulada (con certificado de cliente); solo con `run`, no arranca con `up` | ninguno |
+
+### Ver el motor en el navegador
+
+Para seguir el motor "en vivo" hay un tablero de **Grafana** ya armado (qué es cada pieza:
+[Grafana](conceptos-base.md#grafana), [cAdvisor](conceptos-base.md#cadvisor) y
+[Prometheus](conceptos-base.md#prometheus-micrometer-y-métricas)). Necesitas haber hecho los pasos 1 a 4 del camino B.
+
+1. **Prepara la contraseña.** Si corriste `deploy/setup-dev.sh` antes de que existiera Grafana, vuelve a
+   correrlo: no rompe nada y solo añade `GRAFANA_ADMIN_PASSWORD` a tu `deploy/.env`.
+
+   ```sh
+   deploy/setup-dev.sh
+   ```
+
+2. **Levanta el perfil de observabilidad** (Prometheus, Grafana y cAdvisor, además de lo que ya corre):
+
+   ```sh
+   docker compose -f deploy/docker-compose.yml --profile observability up -d
+   ```
+
+3. **Abre <http://127.0.0.1:3000>.** Usuario: `admin`. Contraseña: la línea `GRAFANA_ADMIN_PASSWORD=...` de
+   `deploy/.env` (`grep GRAFANA_ADMIN_PASSWORD deploy/.env`; no la compartas ni la subas a git). Sin contraseña
+   Grafana no deja entrar. Si el puerto 3000 ya lo usa otro programa, levanta con `GRAFANA_PORT=3001` delante del
+   comando y abre ese puerto.
+4. **El tablero "Motor de horarios" se abre solo** (es la página de inicio), con los últimos 15 minutos y
+   actualización cada 5 segundos. Arriba a la izquierda, **Réplica** elige qué réplicas mirar ("All" las
+   suma; se nombran por su IP interna).
+5. **Genera algo de tráfico** para que haya qué ver (con el catálogo cargado y un token, pasos 4 y 5):
+
+   ```sh
+   for i in $(seq 1 300); do curl -s -o /dev/null -X POST localhost:8080/combinations \
+     -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d '{}'; done
+   ```
+
+   Un token vive 10 minutos; si vence verás subir los `401` en el tablero (también sirve para ver esa fila).
+
+Qué mirar en cada fila (cada panel trae su descripción: pasa el ratón sobre la "i" junto al título):
+
+| Fila | Qué te dice | Señal buena |
+|---|---|---|
+| **Resumen** | Carga actual, p99, rechazos, réplicas listas y desactualizadas, búsquedas cortadas | p99 en verde (menos de 200 ms), todas las réplicas listas, 0 desactualizadas |
+| **Tráfico** | Solicitudes por segundo por endpoint y por código de estado; rechazos | Casi todo `200`; sin `5xx` |
+| **Latencia** | p50, p95 y p99 por endpoint, con la meta de 200 ms como línea roja | Las curvas bien por debajo de la línea |
+| **Búsqueda** | Cuánto tarda el solver, cuántos nodos explora, búsquedas cortadas por tiempo y vacías | Pocos milisegundos; cortadas en 0 |
+| **Recursos por contenedor** | CPU, memoria y red de cada servicio (lo mide cAdvisor) | CPU con holgura; memoria estable |
+| **JVM por réplica** | Memoria heap, pausas del recolector de basura, hilos y CPU del proceso | Heap que sube y baja; pausas por debajo de 1 % |
+| **Catálogo** | Versión (`seq`) de cada réplica, listas/desactualizadas, retraso del seguidor, eventos de ingesta, calentamiento | Todas con el mismo `seq`; retraso 0 |
+
+Otras pruebas: envía un cambio de cupo (`run --rm simulator seats 2 MAT101-01 0`): sube la versión (`seq`) de todas las
+réplicas y aparece un evento `applied` en la última gráfica. Como el simulador cierra su conexión al terminar, el motor lo
+toma como pérdida de sincronía con la institución: las réplicas pasan a "Desactualizada" y "No lista" (así se ve cómo
+reaccionan los paneles) hasta que vuelvas a cargar el catálogo con `run --rm simulator load`. Con `--scale engine=5`
+aparecen las nuevas réplicas solas. Prometheus sigue disponible en <http://127.0.0.1:9090> para consultas sueltas.
+
+**Apagarlo.** Solo lo de observabilidad: `docker compose -f deploy/docker-compose.yml --profile observability stop grafana cadvisor prometheus`
+(y `rm -f` con los mismos nombres si quieres quitar los contenedores). Todo junto: `down` con `--profile observability`
+(ver "Apagar"). Grafana no guarda estado propio (tablero y origen de datos salen de `deploy/grafana/`), así que
+nada se pierde; el historial de métricas queda en Prometheus (7 días) hasta un `down -v`.
+
+Para seguir una **prueba de carga** (`bench/`) en vivo, con este mismo tablero y el panel web de k6, ver
+[`bench/README.md`](../bench/README.md#seguir-una-prueba-en-vivo).
 
 ### Apagar
 
 ```sh
+docker compose -f deploy/docker-compose.yml --profile observability down   # apaga también Prometheus, Grafana y cAdvisor
 docker compose -f deploy/docker-compose.yml down      # detiene; NATS conserva el historial
 docker compose -f deploy/docker-compose.yml down -v   # además borra el historial (empezar de cero)
 deploy/setup-dev.sh --force                           # (opcional) regenera certificados, llaves y contraseña
@@ -445,7 +508,7 @@ interna y queda solo en `127.0.0.1:9090`:
 
 ```sh
 docker compose -f deploy/docker-compose.yml --profile observability up -d
-# abrir http://localhost:9090 y probar, por ejemplo:
+# abrir http://localhost:9090 y probar (para un tablero ya armado, ver "Ver el motor en el navegador"), por ejemplo:
 #   sched:http_latency_seconds:p99           (p99 por endpoint, regla de deploy/prometheus/rules.yml)
 #   sum(rate(sched_search_incomplete_total[5m]))   (búsquedas cortadas por el tiempo máximo)
 #   sched_replica_stale                      (1 = réplica desactualizada)
