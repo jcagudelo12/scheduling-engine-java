@@ -24,6 +24,7 @@ import java.util.Random;
 import java.util.regex.Pattern;
 import org.bouncycastle.math.ec.rfc8032.Ed25519;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.builder.SpringApplicationBuilder;
@@ -89,7 +90,12 @@ import tools.jackson.databind.node.ObjectNode;
  * identificadores generados al azar ({@code X-Request-Id}, normalizado a {@code <uuid>}) la fecha de los errores de
  * Spring ({@code timestamp}, normalizada a {@code <ts>}) y el host de {@code Location} ({@code <host>}).
  * Llaves de prueba: la semilla de abajo es PÚBLICA y solo sirve para estas pruebas.
+ *
+ * <p>Solo corre si se pasa {@code -Dsched.export.request-cases}: es una herramienta de exportación, no una
+ * prueba del build, y necesita {@code bench/scenario.json}, {@code bench/students.json} y
+ * {@code bench/alternatives.json}, que se generan con {@code bench/generate_scenario.py} y no se versionan.
  */
+@EnabledIfSystemProperty(named = "sched.export.request-cases", matches = ".+")
 class ExportRequestCasesTest {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
