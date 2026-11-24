@@ -219,3 +219,30 @@ Hay que reconstruir la imagen:
 docker compose -f deploy/docker-compose.yml up -d --build
 docker compose -f deploy/docker-compose.yml build simulator   # si cambiaste el simulador
 ```
+
+## Pruebas de carga y observación
+
+### `bench/run-pico.sh` dice `error: el puerto … ya está en uso`
+
+El script revisa, antes de levantar nada, que estén libres los puertos que va a publicar (`18080`, y con
+`OBSERVE=1` / `K6_DASHBOARD=1` también `3000`, `9090` y `5665`). Casi siempre el culpable es el despliegue de
+`deploy/` con el perfil `observability` (usa `9090` y `8080`) u otro programa en el `3000`. Apágalo o elige otro
+puerto con la variable que indica el mensaje (`GRAFANA_PORT`, `PROMETHEUS_PORT`, `K6_DASHBOARD_PORT`). Detalle en
+[Puertos ocupados, detener y limpiar](../bench/README.md#puertos-ocupados-detener-y-limpiar).
+
+### Grafana no abre o el tablero está vacío
+
+- **No abre:** mira qué puerto usaste (`GRAFANA_PORT`; por defecto `3000`) y que el contenedor esté `Up`
+  (`docker ps | grep grafana`). Si quedó en `Created`, su puerto estaba ocupado.
+- **Pide contraseña y no entra:** el usuario es `admin` y la contraseña es `GRAFANA_ADMIN_PASSWORD` de `deploy/.env`
+  (`grep GRAFANA_ADMIN_PASSWORD deploy/.env`).
+- **Paneles sin datos:** los de tráfico solo tienen datos mientras alguien consulta el motor. En `run-pico.sh` cada
+  paso levanta todo de cero, así que entre pasos la gráfica se queda vacía unos segundos.
+
+### Quedaron contenedores de una prueba de carga
+
+Si cerraste la terminal de golpe, la siguiente corrida de `run-pico.sh` los borra sola. Para hacerlo a mano:
+
+```sh
+docker compose -f bench/docker-compose.pico.yml -f bench/docker-compose.observe.yml --profile r3 down -v --remove-orphans
+```

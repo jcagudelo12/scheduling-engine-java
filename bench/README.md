@@ -190,6 +190,37 @@ cAdvisor van fijados a `OBSERVE_CPUS` (`2,3`), que **no son núcleos de ningún 
 con núcleos que no uses (ver [Ajustar los núcleos](#ajustar-los-núcleos-a-tu-máquina)). Los contenedores de observación se llaman
 `obs-*` (no `bench-pico-*`) para que el muestreo de `docker stats` de los resultados no los mezcle.
 
+### Puertos ocupados, detener y limpiar
+
+- **Antes de empezar, `run-pico.sh` revisa los puertos que va a publicar** en `127.0.0.1`: `18080` (balanceador),
+  y con `OBSERVE=1` / `K6_DASHBOARD=1` también Grafana (`3000`), Prometheus (`9090`) y el panel de k6 (`5665`).
+  Si alguno está ocupado, se detiene con un mensaje como:
+
+  ```text
+  error: el puerto 9090 (Prometheus) ya está en uso en 127.0.0.1 (¿otra corrida o despliegue del motor?).
+         Libérelo o elija otro con PROMETHEUS_PORT=<puerto>.
+  ```
+
+  Las causas típicas: **el despliegue de `deploy/` con el perfil `observability` sigue levantado** (ocupa `9090`, `8080`
+  y su Grafana), u otro programa usa el `3000` (por ejemplo, un servidor de desarrollo de Node). Apaga lo que
+  sobra o cambia el puerto:
+
+  ```sh
+  docker compose -f deploy/docker-compose.yml --profile observability down   # apaga el despliegue (sin -v conserva sus datos)
+  GRAFANA_PORT=3002 OBSERVE=1 K6_DASHBOARD=1 bench/run-pico.sh                 # o usa otro puerto para Grafana
+  ```
+
+- **Para detener una corrida**, pulsa `Ctrl+C` en la terminal: el script apaga sus contenedores antes de salir (si
+  k6 está en medio de un paso, puede tardar unos segundos). Si la terminal se cerró de golpe y quedaron
+  contenedores, **la siguiente corrida los borra sola al empezar**. Para limpiarlos a mano:
+
+  ```sh
+  docker compose -f bench/docker-compose.pico.yml -f bench/docker-compose.observe.yml --profile r3 down -v --remove-orphans
+  ```
+
+- Una corrida cortada a la mitad puede dejar modificado `bench/results/pico_environment.md` (el script lo reescribe
+  al empezar). Si no vas a usar esos resultados, descártalo con `git checkout -- bench/results/pico_environment.md`.
+
 ## En qué condiciones se midió cada cifra
 
 Las cifras de rendimiento que aparecen en este repositorio **no son comparables entre sí** si no se
