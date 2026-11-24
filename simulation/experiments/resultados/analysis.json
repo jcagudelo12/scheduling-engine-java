@@ -1,0 +1,324 @@
+{
+  "params" : {
+    "alpha" : 0.05,
+    "mu0" : 0.2,
+    "seed" : 42,
+    "bootstrapResamples" : 10000
+  },
+  "profiles" : 500,
+  "descriptives" : {
+    "A" : {
+      "t_total_s" : {
+        "n" : 500,
+        "mean" : 2304.4262680000015,
+        "median" : 1922.8085,
+        "sd" : 1482.3378787631682,
+        "q1" : 1387.365,
+        "q3" : 2746.7785,
+        "iqr" : 1359.4134999999999,
+        "min" : 120.533,
+        "max" : 10928.398
+      },
+      "r_traslape" : {
+        "n" : 500,
+        "mean" : 1.908,
+        "median" : 1.0,
+        "sd" : 2.588616981276201,
+        "q1" : 0.0,
+        "q3" : 3.0,
+        "iqr" : 3.0,
+        "min" : 0.0,
+        "max" : 20.0
+      },
+      "r_cupo" : {
+        "n" : 500,
+        "mean" : 0.236,
+        "median" : 0.0,
+        "sd" : 0.5107109273381607,
+        "q1" : 0.0,
+        "q3" : 0.0,
+        "iqr" : 0.0,
+        "min" : 0.0,
+        "max" : 3.0
+      },
+      "r_total" : {
+        "n" : 500,
+        "mean" : 2.144,
+        "median" : 1.0,
+        "sd" : 2.691049515521768,
+        "q1" : 0.0,
+        "q3" : 3.0,
+        "iqr" : 3.0,
+        "min" : 0.0,
+        "max" : 20.0
+      },
+      "courses_enrolled" : {
+        "n" : 500,
+        "mean" : 4.164,
+        "median" : 4.0,
+        "sd" : 1.3404094131233102,
+        "q1" : 4.0,
+        "q3" : 5.0,
+        "iqr" : 1.0,
+        "min" : 0.0,
+        "max" : 8.0
+      }
+    },
+    "B" : {
+      "t_total_s" : {
+        "n" : 500,
+        "mean" : 1748.368526,
+        "median" : 1643.759,
+        "sd" : 752.0002019340602,
+        "q1" : 1192.6935,
+        "q3" : 2120.7595,
+        "iqr" : 928.066,
+        "min" : 241.159,
+        "max" : 5562.615
+      },
+      "r_traslape" : {
+        "n" : 500,
+        "mean" : 0.0,
+        "median" : 0.0,
+        "sd" : 0.0,
+        "q1" : 0.0,
+        "q3" : 0.0,
+        "iqr" : 0.0,
+        "min" : 0.0,
+        "max" : 0.0
+      },
+      "r_cupo" : {
+        "n" : 500,
+        "mean" : 0.604,
+        "median" : 0.0,
+        "sd" : 0.8417845344295717,
+        "q1" : 0.0,
+        "q3" : 1.0,
+        "iqr" : 1.0,
+        "min" : 0.0,
+        "max" : 4.0
+      },
+      "r_total" : {
+        "n" : 500,
+        "mean" : 0.604,
+        "median" : 0.0,
+        "sd" : 0.8417845344295717,
+        "q1" : 0.0,
+        "q3" : 1.0,
+        "iqr" : 1.0,
+        "min" : 0.0,
+        "max" : 4.0
+      },
+      "courses_enrolled" : {
+        "n" : 500,
+        "mean" : 4.374,
+        "median" : 4.0,
+        "sd" : 1.247893616040209,
+        "q1" : 4.0,
+        "q3" : 5.0,
+        "iqr" : 1.0,
+        "min" : 1.0,
+        "max" : 8.0
+      }
+    }
+  },
+  "main" : {
+    "n" : 500,
+    "excluded" : 0,
+    "excludedProfiles" : [ ],
+    "reduction" : {
+      "n" : 500,
+      "mean" : 0.10808462226014201,
+      "median" : 0.15161698934606835,
+      "sd" : 0.35318574594463553,
+      "q1" : -0.06891592717341077,
+      "q3" : 0.3287543673337794,
+      "iqr" : 0.39767029450719016,
+      "min" : -1.3186417858150328,
+      "max" : 0.8507040678883894
+    },
+    "normality" : {
+      "sample" : "reducción relativa r",
+      "n" : 500,
+      "w" : 0.9721714922257639,
+      "pValue" : 3.799651486982397E-8,
+      "constant" : false,
+      "subsampled" : false,
+      "normal" : false
+    },
+    "test" : {
+      "test" : "Wilcoxon de rangos con signo",
+      "statistic" : 46804.0,
+      "df" : "NaN",
+      "pValue" : 0.9999995078985076,
+      "effectName" : "r (Z/√n)",
+      "effectSize" : -0.21889389309349458,
+      "z" : -4.8946162481662565,
+      "method" : "aproximación normal con corrección de continuidad",
+      "n" : 500
+    },
+    "reason" : "Shapiro-Wilk rechaza la normalidad (W = 0.9722, p < 0.0001 <= 0.05); se usa Wilcoxon",
+    "reject" : false,
+    "meanCiLow" : 0.07705182618606105,
+    "meanCiHigh" : 0.13911741833422298,
+    "bootstrapCiLow" : 0.07697992028353652,
+    "bootstrapCiHigh" : 0.1384578735591308
+  },
+  "rTotal" : {
+    "difference" : {
+      "n" : 500,
+      "mean" : -1.54,
+      "median" : -1.0,
+      "sd" : 2.7216198171048265,
+      "q1" : -2.0,
+      "q3" : 0.0,
+      "iqr" : 2.0,
+      "min" : -20.0,
+      "max" : 3.0
+    },
+    "normality" : {
+      "sample" : "diferencia Rtotal (B - A)",
+      "n" : 500,
+      "w" : 0.7722853769470612,
+      "pValue" : 9.106781512005302E-26,
+      "constant" : false,
+      "subsampled" : false,
+      "normal" : false
+    },
+    "reason" : "Shapiro-Wilk rechaza la normalidad (W = 0.7723, p < 0.0001 <= 0.05); se usa Wilcoxon",
+    "twoSided" : {
+      "test" : "Wilcoxon de rangos con signo",
+      "statistic" : 15706.0,
+      "df" : "NaN",
+      "pValue" : 1.694999359053198E-38,
+      "effectName" : "r (Z/√n)",
+      "effectSize" : -0.5802686601764022,
+      "z" : -12.975201693671606,
+      "method" : "aproximación normal con corrección de continuidad, corrección por empates, tratamiento de ceros",
+      "n" : 500
+    },
+    "oneSidedBLessThanA" : {
+      "test" : "Wilcoxon de rangos con signo",
+      "statistic" : 15706.0,
+      "df" : "NaN",
+      "pValue" : 8.47499679526599E-39,
+      "effectName" : "r (Z/√n)",
+      "effectSize" : -0.5802686601764022,
+      "z" : -12.975201693671606,
+      "method" : "aproximación normal con corrección de continuidad, corrección por empates, tratamiento de ceros",
+      "n" : 500
+    },
+    "rejectTwoSided" : true,
+    "rejectOneSided" : true,
+    "meanCiLow" : -1.7791361309032876,
+    "meanCiHigh" : -1.3008638690967125
+  },
+  "clash" : {
+    "ok" : true,
+    "profilesWithClashInB" : 0,
+    "profiles" : [ ]
+  },
+  "validity" : {
+    "meanA" : 4.164,
+    "meanB" : 4.374,
+    "difference" : 0.21,
+    "ciLow" : 0.1285350485468136,
+    "ciHigh" : 0.2914649514531864,
+    "warning" : true,
+    "threshold" : 0.1
+  },
+  "subgroups" : [ {
+    "variable" : "n_courses",
+    "value" : "1",
+    "n" : 9,
+    "meanReduction" : -0.29460931898819753,
+    "medianReduction" : -0.21103971437094848
+  }, {
+    "variable" : "n_courses",
+    "value" : "2",
+    "n" : 19,
+    "meanReduction" : -0.14281926985953988,
+    "medianReduction" : -0.04242317292886412
+  }, {
+    "variable" : "n_courses",
+    "value" : "3",
+    "n" : 9,
+    "meanReduction" : 0.06778572185956859,
+    "medianReduction" : 0.013863633396557508
+  }, {
+    "variable" : "n_courses",
+    "value" : "4",
+    "n" : 192,
+    "meanReduction" : 0.06681809547453162,
+    "medianReduction" : 0.11938853332418362
+  }, {
+    "variable" : "n_courses",
+    "value" : "5",
+    "n" : 171,
+    "meanReduction" : 0.13739241756628115,
+    "medianReduction" : 0.17709919810866023
+  }, {
+    "variable" : "n_courses",
+    "value" : "6",
+    "n" : 59,
+    "meanReduction" : 0.2298570494032138,
+    "medianReduction" : 0.21799191553544497
+  }, {
+    "variable" : "n_courses",
+    "value" : "7",
+    "n" : 35,
+    "meanReduction" : 0.22812687969568923,
+    "medianReduction" : 0.2913031836608382
+  }, {
+    "variable" : "n_courses",
+    "value" : "8",
+    "n" : 6,
+    "meanReduction" : 0.1546841987461762,
+    "medianReduction" : 0.25375775267118683
+  }, {
+    "variable" : "window",
+    "value" : "1",
+    "n" : 162,
+    "meanReduction" : 0.12162878073071254,
+    "medianReduction" : 0.15934930670779934
+  }, {
+    "variable" : "window",
+    "value" : "2",
+    "n" : 156,
+    "meanReduction" : 0.016590080390019198,
+    "medianReduction" : 0.03625880354006605
+  }, {
+    "variable" : "window",
+    "value" : "3",
+    "n" : 182,
+    "meanReduction" : 0.1744527258838055,
+    "medianReduction" : 0.25460668277916854
+  }, {
+    "variable" : "program",
+    "value" : "MECATRONICA",
+    "n" : 282,
+    "meanReduction" : 0.10292705111403803,
+    "medianReduction" : 0.13656019967839028
+  }, {
+    "variable" : "program",
+    "value" : "OTROS",
+    "n" : 23,
+    "meanReduction" : 0.1256738518882957,
+    "medianReduction" : 0.14828737366808437
+  }, {
+    "variable" : "program",
+    "value" : "SISTEMAS",
+    "n" : 195,
+    "meanReduction" : 0.11346863652554612,
+    "medianReduction" : 0.16462394005823744
+  } ],
+  "power" : {
+    "sd" : 0.35318574594463553,
+    "delta" : 0.05,
+    "alpha" : 0.05,
+    "requiredFor80" : 310,
+    "requiredFor90" : 429,
+    "nUsed" : 500,
+    "powerAtN" : 0.9358344102199266
+  }
+}

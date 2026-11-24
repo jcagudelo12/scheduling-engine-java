@@ -26,6 +26,12 @@ catálogo, con **un solo escritor**.
 - **Disponibilidad:** `/ready` responde 200 solo cuando la réplica está al día. El
   balanceador y el orquestador no envían tráfico antes. La ingesta abre su gRPC solo
   cuando está lista, porque de su réplica sale el último `seq` aceptado.
+  *Implementación:* `Readiness` se calcula en cada consulta (follower al día, catálogo
+  cargado y réplica no `stale`), así que `/ready` vuelve a 503 si se pierde la sincronía y
+  a 200 con la siguiente carga completa. Para abrir el gRPC la ingesta solo exige "follower
+  al día" (`isCaughtUp`), porque debe poder recibir la carga que recupera la réplica.
+  Tras un hueco la réplica solo se recupera con una carga completa. La ingesta valida el
+  `seq` y escribe bajo un mismo candado, y consume el `seq` solo si la escritura tuvo éxito.
 - **Pérdida de sincronía:** si la ingesta detecta un hueco o se cierra la conexión con la
   institución, escribe `SyncLost` en el historial y todas las réplicas marcan sus
   respuestas como `stale`.

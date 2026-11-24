@@ -1,7 +1,7 @@
 # 0009. Acotar el tiempo de búsqueda de las 5 mejores combinaciones
 
-- **Estado:** Propuesto
-- **Fecha:** 2026-10-16
+- **Estado:** Aceptado
+- **Fecha:** 2026-11-22
 - **Escenario:** [E2](../calidad/04-escenarios.md#e2-una-búsqueda-que-explota)
 - **Relacionado con:** [0006](0006-mejores-combinaciones-con-ramificacion-y-poda.md) (top 5
   exacto con ramificación y poda)
@@ -118,5 +118,80 @@ arquitectura.
 
 ## Decisión
 
-Abierta. Se elige en el Bloque 3, con las tácticas. Antes conviene medir la opción A con los
-peores casos: si cabe en 200 ms, la tensión desaparece.
+**Opción B: un tiempo máximo de búsqueda con la mejor respuesta encontrada, marcada como
+incompleta.** Se descarta A (sin cota de latencia, no cumple E2 en el peor caso) y se deja C, D y E
+fuera por ahora (ver abajo).
+
+Cómo queda:
+
+- `Problem` lleva un `timeLimit` opcional. `ForwardCheckingSolver` y `BacktrackingSolver` leen
+  `System.nanoTime()` cada 256 nodos (barato: una máscara por nodo) y, si el tiempo venció, cortan
+  y devuelven lo encontrado. `Solver.search(Problem)` devuelve un `SearchResult` con
+  `complete`; `solveScored` y `solve` delegan y descartan el indicador.
+- `GenerateCombinations` y `SuggestAlternatives` pasan el límite, configurable con
+  `SCHED_SEARCH_TIMEOUT_MS` (por defecto **150**, bajo los 200 ms de E2 para dejar margen a la
+  lectura del catálogo y la serialización; **0** lo desactiva). Las respuestas de `/combinations` y
+  `/alternatives` incluyen `"complete": true|false`.
+- **La exactitud no cambia cuando la búsqueda termina.** Con `complete = true` los resultados son
+  exactamente los del ADR 0006 (top-K por costo, mismo orden, mismos desempates). Un tiempo
+  máximo holgado produce resultados idénticos a no tenerlo, lo que se comprueba con una propiedad
+  (jqwik) contra la búsqueda sin límite.
+- **Con `complete = false` no hay garantía de top-K.** Con costo, son las mejores combinaciones
+  encontradas hasta que venció el tiempo, que pueden no ser las de menor costo ni llegar a las K
+  pedidas (incluso ninguna, si el árbol no entregó una antes). Toda combinación devuelta es
+  válida: sin cruces y con un grupo por curso. Sin costo, el corte devuelve las combinaciones
+  halladas hasta ese momento.
+
+### Por qué B
+
+- **Es la única opción que acota la latencia sin quitarle nada al estudiante.** D mueve el costo
+  al estudiante en el peor momento y E no ayuda al perfil poco común, que es el peor caso. A y B
+  se distinguen por una sola cosa: con B hay una cota de tiempo.
+- **El motor no tenía ninguna cota.** Una solicitud con cursos que se cruzan por pares sin
+  solución obliga a recorrer un árbol exponencial. El caso de prueba (12 cursos de 10 grupos,
+  cruces por índice de grupo, principio del palomar) no tiene solución y ni MRV ni forward
+  checking lo ven antes del nivel 10: el árbol es del orden de 10! nodos. Con el límite en
+  50 ms, ambos solvers terminan en menos de 200 ms y marcan `complete = false`.
+- **Los datos del benchmark no contradicen la decisión.** La prueba de carga
+  (`bench/results/report.md`) mide perfiles típicos y no el peor caso: p99 de 3,8 ms a 200
+  solicitudes/s en frío, y 50 µs por búsqueda en el microbenchmark de 6 × 5. Para estos perfiles
+  la búsqueda termina mucho antes del límite y `complete` es `true`: B no cambia la respuesta
+  del caso normal. Lo que mide E2, el 7 × 8 sin filtros con "huecos" primero, no está en esos
+  datos, y por eso hace falta el límite en vez de confiar en que A cabe.
+- **Mantiene la garantía donde importa.** El resultado solo es "no garantizado" cuando de otro
+  modo la solicitud no habría terminado a tiempo, que es exactamente lo que pide E2 ("si no puede
+  garantizar que son las 5 mejores, lo indica").
+
+### Por qué no C (presupuesto de trabajo)
+
+C da respuestas reproducibles, pero E2 se mide en milisegundos y el número de ramas que cabe en
+150 ms depende de la máquina y de su carga, así que habría que calibrarlo y recalibrarlo. El
+tiempo de reloj acota directamente lo que se promete. La falta de reproducibilidad de B solo
+afecta a las respuestas incompletas, que están marcadas. Si se necesitara reproducibilidad en
+pruebas, C puede agregarse como un segundo límite sin cambiar la API (`search` ya devuelve
+`complete`).
+
+## Consecuencias
+
+- **Gana:** la latencia de una solicitud queda acotada (150 ms más la demora del corte, de
+  microsegundos) para cualquier entrada, y una solicitud difícil ya no ocupa un núcleo sin fin ni
+  degrada a las demás.
+- **Paga:** la misma consulta puede dar respuestas distintas, con `complete` distinto, según la
+  carga de la máquina. El portal debe leer `complete` y avisar al estudiante cuando es `false`
+  ("podría haber mejores combinaciones", S6).
+- **Pendiente de medir:** la distancia del puntaje de las respuestas cortadas al top 5 exacto con perfiles
+  7 × 8 reales (el porcentaje de cortes ya se midió, ver abajo) y el efecto sobre la p99 de las demás
+  solicitudes. El límite de 150 ms es un valor inicial: se ajusta con esas mediciones.
+  El motor ya cuenta las búsquedas cortadas (`sched_search_incomplete_total`, ver
+  [arquitectura.md](../arquitectura.md#observabilidad)); falta recogerlas en un pico real.
+- **Medido (2026-11-22, [report-pico.md](../../bench/results/report-pico.md)):** en un pico simulado de
+  hasta 8.000 solicitudes/s (mezcla con `avoid` y `/alternatives`, catálogo estilo ITM) y en
+  perfiles peor caso 7 x 8 con `avoid` (incluido uno sintético con 14 sesiones en 14 celdas), **0 % de
+  las respuestas se cortaron por el tiempo** (`complete=false` en k6 y `sched_search_incomplete_total`
+  coinciden), con una búsqueda de 7 x 8 de 1-2 ms y p99 de 4-13 ms a 10-200 solicitudes/s. El 99 % de
+  respuestas exactas de E2 se cumple con 100 % en esos datos; no hubo cortes, así que no se pudo medir la
+  distancia al top 5 exacto. El tiempo máximo funciona como red de seguridad que no se activa con perfiles
+  reales; el valor de 150 ms se mantiene.
+- **No resuelve** la cota de entrada: el tiempo máximo acota cada solicitud, no su cantidad. El
+  tope de cursos y de tamaño de la solicitud se trata aparte (validación de entrada).
+- Las respuestas incompletas no se guardan ni se reutilizan: cada solicitud calcula la suya.

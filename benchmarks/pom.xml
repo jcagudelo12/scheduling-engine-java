@@ -11,13 +11,16 @@
 
     <artifactId>sched-benchmarks</artifactId>
     <description>
-        Microbenchmarks con JMH del solver y de la búsqueda en el catálogo.
+        Microbenchmarks con JMH del solver, de la búsqueda en el catálogo y de la verificación del token.
         Ejecutar: java -jar benchmarks/target/benchmarks.jar
     </description>
 
     <dependencies>
         <dependency><groupId>sched</groupId><artifactId>sched-domain</artifactId></dependency>
         <dependency><groupId>sched</groupId><artifactId>sched-solver</artifactId></dependency>
+        <!-- JwtVerifyBenchmark: la verificación del token del adaptador HTTP y Ed25519 de BouncyCastle. -->
+        <dependency><groupId>sched</groupId><artifactId>sched-adapter-gateway-http</artifactId></dependency>
+        <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId></dependency>
         <dependency><groupId>org.openjdk.jmh</groupId><artifactId>jmh-core</artifactId></dependency>
     </dependencies>
 

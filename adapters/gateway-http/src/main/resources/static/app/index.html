@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Asistente de horarios (demostración)</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <a class="skip" href="#principal">Saltar al contenido</a>
+  <header class="site">
+    <h1>Asistente de horarios</h1>
+    <p class="muted">Cliente de demostración del motor de horarios. Es un medio de prueba: el aporte principal es el motor.</p>
+  </header>
+
+  <div id="aviso" class="notice notice-warn" role="alert" hidden></div>
+
+  <main id="principal">
+    <section aria-labelledby="t-acceso">
+      <h2 id="t-acceso">1. Acceso</h2>
+      <p class="muted">Pega el token firmado por la institución, o trabaja sin token si el motor corre con <code>SCHED_AUTH=none</code> (solo desarrollo). El token se guarda solo en esta pestaña (<code>sessionStorage</code>) y se borra al cerrarla.</p>
+      <div class="field">
+        <label for="token">Token (opcional)</label>
+        <textarea id="token" rows="3" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      </div>
+      <div class="actions">
+        <button type="button" id="usar-token">Usar token</button>
+        <button type="button" id="olvidar-token" class="secondary">Olvidar token</button>
+      </div>
+      <p id="estado-token" class="muted" role="status"></p>
+    </section>
+
+    <section aria-labelledby="t-asignaturas">
+      <h2 id="t-asignaturas">2. Asignaturas</h2>
+      <div id="modo-sin-token">
+        <div class="field">
+          <label for="estudiante">Identificador del estudiante</label>
+          <input id="estudiante" type="text" value="est-001" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="asignaturas">Asignaturas habilitadas</label>
+          <input id="asignaturas" type="text" value="MAT101, FIS101" autocomplete="off" spellcheck="false" aria-describedby="ayuda-asignaturas">
+          <p id="ayuda-asignaturas" class="muted">Códigos separados por coma o espacio, tal como están en el catálogo (por ejemplo <code>MAT101, FIS101</code>).</p>
+        </div>
+      </div>
+      <div id="modo-con-token" hidden>
+        <p>Estudiante: <strong id="token-estudiante"></strong></p>
+        <p id="token-asignaturas-etiqueta">Asignaturas del token:</p>
+        <ul id="token-asignaturas" class="chips" aria-labelledby="token-asignaturas-etiqueta"></ul>
+        <p class="muted">Solo se muestran: el motor lee y valida el token; esta página no confía en su contenido.</p>
+      </div>
+    </section>
+
+    <section aria-labelledby="t-evitar">
+      <h2 id="t-evitar">3. Franjas a evitar</h2>
+      <p class="muted" id="ayuda-grilla">Marca las horas que prefieres no tener clase (de lunes a sábado, de 6:00 a 22:00). Clic o arrastre con el mouse; con teclado, flechas para moverte y espacio o Intro para marcar. Son preferencias: ordenan las opciones, no las descartan.</p>
+      <div class="avoid-wrap"><div id="grilla-evitar" class="avoid-grid" role="grid" aria-label="Franjas a evitar" aria-describedby="ayuda-grilla" aria-multiselectable="true"></div></div>
+      <div class="actions">
+        <button type="button" id="limpiar-franjas" class="secondary">Quitar todas las franjas</button>
+        <span id="resumen-franjas" class="muted" role="status"></span>
+      </div>
+    </section>
+
+    <section aria-labelledby="t-combinaciones">
+      <h2 id="t-combinaciones">4. Combinaciones</h2>
+      <div class="actions"><button type="button" id="ver-combinaciones">Ver combinaciones</button></div>
+      <div id="resultado-combinaciones" aria-live="polite" tabindex="-1"></div>
+    </section>
+
+    <section id="seccion-seleccion" aria-labelledby="t-seleccion" hidden>
+      <h2 id="t-seleccion" tabindex="-1">5. Mi selección</h2>
+      <p class="muted">Marca los grupos en los que ya estás inscrito. Si te avisan que un grupo se quedó sin cupo, indícalo para ver alternativas que conserven lo que ya elegiste.</p>
+      <ul id="lista-seleccion" class="selection"></ul>
+      <div class="actions"><button type="button" id="pedir-alternativas">Pedir alternativas</button></div>
+      <div id="ayuda-simulacion" class="muted" hidden></div>
+      <div id="resultado-alternativas" aria-live="polite" tabindex="-1"></div>
+    </section>
+  </main>
+
+  <footer class="site muted">
+    <p>Si algo falla, indica el código de solicitud (<code>X-Request-Id</code>) que aparece en el mensaje de error.</p>
+  </footer>
+</body>
+</html>

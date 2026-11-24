@@ -1,5 +1,7 @@
 # 4. Escenarios de calidad
 
+> Términos técnicos (SLO, p99, ADR, SDK, gRPC, NATS…): [conceptos-base.md](../conceptos-base.md) y [glosario](../glosario.md). Índice: [README](README.md).
+
 Un escenario por tensión, no por atributo. Cada uno indica de qué supuestos depende
 ([02-supuestos.md](02-supuestos.md)).
 

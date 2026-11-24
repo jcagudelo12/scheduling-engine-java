@@ -6,6 +6,7 @@ import io.nats.client.IterableConsumer;
 import io.nats.client.Message;
 import io.nats.client.api.DeliverPolicy;
 import io.nats.client.api.OrderedConsumerConfiguration;
+import java.io.IOException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,13 +16,17 @@ import sched.application.AppException;
 import sched.application.ApplyLogEntry;
 import sched.application.CatalogLogEntry;
 import sched.application.Readiness;
+import sched.application.ports.EngineMetrics;
+import sched.domain.Course;
+import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
 import sched.proto.Convert;
 import sched.proto.engine.v1.SnapshotChunk;
 
 /**
  * Lee el historial desde el principio (la última carga completa) y lo aplica a la réplica
- * local. Marca la instancia como lista cuando ya no quedan mensajes pendientes.
+ * local. Marca el follower como al día cuando ya no quedan mensajes pendientes y deja de estarlo si se
+ * pierde la conexión (la instancia lista además exige una réplica fresca, ver {@code Readiness}).
  */
 public final class CatalogFollower implements AutoCloseable {
 
@@ -33,10 +38,17 @@ public final class CatalogFollower implements AutoCloseable {
     private final String streamName;
     private final ApplyLogEntry apply;
     private final Readiness readiness;
+    private final EngineMetrics metrics;
     private volatile boolean running = true;
     private Thread thread;
 
     public CatalogFollower(Connection connection, String streamName, ApplyLogEntry apply, Readiness readiness) {
+        this(connection, streamName, apply, readiness, EngineMetrics.NOOP);
+    }
+
+    public CatalogFollower(
+            Connection connection, String streamName, ApplyLogEntry apply, Readiness readiness, EngineMetrics metrics) {
+        this.metrics = metrics;
         this.connection = connection;
         this.streamName = streamName;
         this.apply = apply;
@@ -61,6 +73,8 @@ public final class CatalogFollower implements AutoCloseable {
                 if (!running) {
                     return;
                 }
+                readiness.markBehind();
+                metrics.followerResync();
                 applyEntry(new CatalogLogEntry.SyncLost());
                 try {
                     Thread.sleep(RETRY_DELAY);
@@ -81,10 +95,12 @@ public final class CatalogFollower implements AutoCloseable {
     }
 
     private void follow() throws Exception {
+        readiness.markBehind();
         var jsm = connection.jetStreamManagement();
         if (jsm.getStreamInfo(streamName).getStreamState().getMsgCount() == 0) {
             // Historial vacío: no hay nada que esperar, aunque tampoco hay catálogo aún.
-            readiness.markReady();
+            readiness.markCaughtUp();
+            metrics.followerLag(0);
         }
 
         var consumer = connection.getStreamContext(streamName)
@@ -95,9 +111,15 @@ public final class CatalogFollower implements AutoCloseable {
             while (running) {
                 Message message = messages.nextMessage(POLL);
                 if (message == null) {
+                    // Sin conexión el consumidor no lanza nada: solo deja de recibir. Sin este
+                    // control la instancia seguiría "lista" con una réplica que ya no se actualiza.
+                    if (connection.getStatus() != Connection.Status.CONNECTED) {
+                        throw new IOException("se perdió la conexión con NATS (" + connection.getStatus() + ")");
+                    }
                     continue;
                 }
-                boolean caughtUp = message.metaData().pendingCount() == 0;
+                long pending = message.metaData().pendingCount();
+                boolean caughtUp = pending == 0;
 
                 try {
                     var entry = sched.proto.engine.v1.CatalogLogEntry.parseFrom(message.getData());
@@ -109,9 +131,10 @@ public final class CatalogFollower implements AutoCloseable {
                     log.error("entrada del historial ilegible: {}", e.getMessage());
                 }
 
-                if (caughtUp && !readiness.isReady()) {
+                metrics.followerLag(pending);
+                if (caughtUp && !readiness.isCaughtUp()) {
                     log.info("réplica al día con el historial");
-                    readiness.markReady();
+                    readiness.markCaughtUp();
                 }
             }
         }
@@ -147,6 +170,8 @@ public final class CatalogFollower implements AutoCloseable {
         private int total;
         private int nextIndex;
         private List<SectionSeats> sections = new ArrayList<>();
+        private List<Course> courses = new ArrayList<>();
+        private EnrollmentRules rules = EnrollmentRules.NONE;
 
         CatalogLogEntry push(SnapshotChunk chunk) {
             if (chunk.getIndex() == 0) {
@@ -154,11 +179,14 @@ public final class CatalogFollower implements AutoCloseable {
                 total = chunk.getTotal();
                 nextIndex = 0;
                 sections = new ArrayList<>();
+                courses = new ArrayList<>();
+                rules = EnrollmentRules.NONE;
             } else if (chunk.getSeq() != seq || chunk.getIndex() != nextIndex) {
                 log.error("bloque de carga fuera de orden: seq={} index={}", chunk.getSeq(), chunk.getIndex());
                 total = 0;
                 nextIndex = 0;
                 sections = new ArrayList<>();
+                courses = new ArrayList<>();
                 return null;
             }
 
@@ -169,11 +197,26 @@ public final class CatalogFollower implements AutoCloseable {
                     log.error("grupo inválido en la carga completa: {}", e.getMessage());
                 }
             }
+            for (var course : chunk.getCoursesList()) {
+                try {
+                    courses.add(Convert.course(course));
+                } catch (Convert.ConversionException e) {
+                    log.error("curso inválido en la carga completa: {}", e.getMessage());
+                }
+            }
+            if (chunk.hasRules()) {
+                try {
+                    rules = Convert.rules(chunk.getRules());
+                } catch (Convert.ConversionException e) {
+                    log.error("reglas inválidas en la carga completa: {}", e.getMessage());
+                }
+            }
             nextIndex++;
 
             if (nextIndex == total) {
-                CatalogLogEntry snapshot = new CatalogLogEntry.Snapshot(seq, sections);
+                CatalogLogEntry snapshot = new CatalogLogEntry.Snapshot(seq, sections, courses, rules);
                 sections = new ArrayList<>();
+                courses = new ArrayList<>();
                 return snapshot;
             }
             return null;

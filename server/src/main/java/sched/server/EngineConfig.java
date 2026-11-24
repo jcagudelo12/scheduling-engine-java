@@ -1,19 +1,35 @@
 package sched.server;
 
+import io.grpc.ServerCredentials;
 import io.grpc.protobuf.services.ProtoReflectionServiceV1;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.nats.client.Connection;
-import io.nats.client.Nats;
+import java.time.Duration;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import sched.adapters.grpc.catalog.CatalogGrpcService;
 import sched.adapters.grpc.events.CatalogEventsGrpcService;
+import sched.adapters.http.AlternativesController;
+import sched.adapters.http.AppSecurityHeadersFilter;
+import sched.adapters.http.AppWebConfig;
+import sched.adapters.http.BodySizeLimitFilter;
 import sched.adapters.http.CombinationsController;
 import sched.adapters.http.HealthController;
+import sched.adapters.http.HttpExceptionHandler;
+import sched.adapters.http.JwtAuthFilter;
+import sched.adapters.http.RequestIdFilter;
+import sched.adapters.http.RequestLimits;
+import sched.adapters.http.auth.JwtVerifier;
+import sched.adapters.http.auth.PublicKeys;
 import sched.adapters.nats.CatalogFollower;
 import sched.adapters.nats.JetStreamCatalogLog;
+import sched.adapters.nats.NatsConnector;
 import sched.application.ApplyLogEntry;
 import sched.application.CatalogReplica;
 import sched.application.GenerateCombinations;
@@ -21,11 +37,18 @@ import sched.application.IngestCatalog;
 import sched.application.IngestCatalogEvent;
 import sched.application.IngestState;
 import sched.application.Readiness;
+import sched.application.SuggestAlternatives;
+import sched.application.ports.EngineMetrics;
 import sched.solver.BacktrackingSolver;
+import sched.solver.ForwardCheckingSolver;
+import sched.solver.Solver;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Composición: crea los adaptadores concretos y los inyecta en los casos de uso. */
 @Configuration
 class EngineConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(EngineConfig.class);
 
     private static final String SERVES_QUERIES = "'${sched.role}' == 'query' or '${sched.role}' == 'all'";
     private static final String INGESTS = "'${sched.role}' == 'ingest' or '${sched.role}' == 'all'";
@@ -35,11 +58,53 @@ class EngineConfig {
         return Role.parse(role);
     }
 
+    // Métricas: el núcleo solo conoce el puerto EngineMetrics; Micrometer queda aquí.
+
+    @Bean
+    EngineMetrics engineMetrics(MeterRegistry registry) {
+        return new MicrometerEngineMetrics(registry);
+    }
+
+    @Bean
+    ReplicaMeters replicaMeters(CatalogReplica replica, Readiness readiness) {
+        return new ReplicaMeters(replica, readiness);
+    }
+
+    /** Spring Boot lo registra como filtro del servlet; mide las consultas y cuenta los rechazos. */
+    @Bean
+    HttpMetricsFilter httpMetricsFilter(MeterRegistry registry) {
+        return new HttpMetricsFilter(registry);
+    }
+
+    /** Id de correlación de cada solicitud ({@code X-Request-Id}); primero en la cadena de filtros. */
+    @Bean
+    RequestIdFilter requestIdFilter() {
+        return new RequestIdFilter();
+    }
+
+    /** Cabeceras de seguridad del cliente web de demostración ({@code /app/**}). */
+    @Bean
+    AppSecurityHeadersFilter appSecurityHeadersFilter() {
+        return new AppSecurityHeadersFilter();
+    }
+
+    /** {@code /app/} sirve el {@code index.html} del cliente web (recursos estáticos del adaptador HTTP). */
+    @Bean
+    AppWebConfig appWebConfig() {
+        return new AppWebConfig();
+    }
+
     // Historial compartido y réplica local (todas las instancias).
 
+    /** Con credenciales (usuario y contraseña, o token) y TLS opcional; nunca se registran. */
     @Bean(destroyMethod = "close")
-    Connection nats(@Value("${sched.nats.url}") String url) throws Exception {
-        return Nats.connect(url);
+    Connection nats(
+            @Value("${sched.nats.url}") String url,
+            @Value("${sched.nats.user}") String user,
+            @Value("${sched.nats.password}") String password,
+            @Value("${sched.nats.token}") String token,
+            @Value("${sched.nats.tls-ca}") String tlsCa) throws Exception {
+        return NatsConnector.connect(url, user, password, token, tlsCa);
     }
 
     @Bean
@@ -55,9 +120,57 @@ class EngineConfig {
         return new CatalogReplica();
     }
 
+    /**
+     * Valida {@code SCHED_WARMUP*}: un valor inválido impide arrancar. El calentamiento solo aplica
+     * a los roles que sirven consultas; en {@code ingest} no hay nada que calentar.
+     */
     @Bean
-    Readiness readiness() {
-        return new Readiness();
+    WarmupSettings warmupSettings(
+            Role role,
+            @Value("${sched.warmup}") String mode,
+            @Value("${sched.warmup.http}") String httpMode,
+            @Value("${sched.warmup.min-s}") long minSeconds,
+            @Value("${sched.warmup.max-s}") long maxSeconds,
+            @Value("${sched.warmup.threads}") int threads) {
+        WarmupSettings settings = WarmupSettings.parse(mode, httpMode, minSeconds, maxSeconds, threads);
+        return role.servesQueries() ? settings : WarmupSettings.OFF;
+    }
+
+    /** Con el calentamiento activo, la instancia no está lista hasta que {@link Warmup} la marque calentada. */
+    @Bean
+    Readiness readiness(CatalogReplica replica, WarmupSettings warmup) {
+        return new Readiness(replica, warmup.enabled());
+    }
+
+    /**
+     * Calienta la JVM con consultas sintéticas en proceso antes de que {@code /ready} responda 200
+     * (ver {@link Warmup}). Mismo solver, tope de resultados y tiempo máximo que las consultas reales.
+     */
+    @Bean
+    @ConditionalOnExpression("(" + SERVES_QUERIES + ") and '${sched.warmup}' == 'on'")
+    Warmup warmup(
+            WarmupSettings settings,
+            Solver solver,
+            CatalogReplica replica,
+            Readiness readiness,
+            JsonMapper json,
+            RequestLimits limits,
+            AuthMode authMode,
+            Environment environment,
+            @Value("${sched.max-combinations}") int maxCombinations,
+            @Value("${sched.max-alternatives}") int maxAlternatives,
+            @Value("${sched.search-timeout-ms}") long timeoutMs) {
+        return new Warmup(settings, solver, replica, readiness, json, limits, maxCombinations, maxAlternatives,
+                searchTimeout(timeoutMs), authMode == AuthMode.JWT,
+                // El puerto real (con server.port=0 es el que eligió el sistema) existe cuando arranca el servidor web.
+                () -> environment.getProperty("local.server.port", Integer.class,
+                        environment.getProperty("server.port", Integer.class, 8080)));
+    }
+
+    @Bean
+    @ConditionalOnExpression("(" + SERVES_QUERIES + ") and '${sched.warmup}' == 'on'")
+    WarmupMeters warmupMeters(Warmup warmup) {
+        return new WarmupMeters(warmup);
     }
 
     @Bean(initMethod = "start", destroyMethod = "close")
@@ -66,9 +179,10 @@ class EngineConfig {
             @Value("${sched.nats.stream}") String stream,
             CatalogReplica replica,
             Readiness readiness,
+            EngineMetrics metrics,
             JetStreamCatalogLog catalogLog) {
         // catalogLog se inyecta para garantizar que el stream exista antes de leerlo.
-        return new CatalogFollower(nats, stream, new ApplyLogEntry(replica), readiness);
+        return new CatalogFollower(nats, stream, new ApplyLogEntry(replica), readiness, metrics);
     }
 
     // HTTP: sondas siempre; consultas de estudiantes según el rol.
@@ -79,10 +193,109 @@ class EngineConfig {
     }
 
     @Bean
+    Solver solver(@Value("${sched.solver}") String name) {
+        return switch (name) {
+            case "forward-checking" -> new ForwardCheckingSolver();
+            case "backtracking" -> new BacktrackingSolver();
+            default -> throw new IllegalArgumentException(
+                    "SCHED_SOLVER desconocido: '" + name + "' (use forward-checking o backtracking)");
+        };
+    }
+
+    /** Límites de tamaño de las solicitudes de consulta (valores por defecto en application.properties). */
+    @Bean
+    RequestLimits requestLimits(
+            @Value("${sched.limits.max-courses}") int maxCourses,
+            @Value("${sched.limits.max-avoid}") int maxAvoid,
+            @Value("${sched.limits.max-id-length}") int maxIdLength,
+            @Value("${sched.limits.max-body-bytes}") long maxBodyBytes) {
+        return new RequestLimits(maxCourses, maxAvoid, maxIdLength, maxBodyBytes);
+    }
+
+    /**
+     * Valida {@code SCHED_AUTH}: un valor desconocido impide arrancar, para que un error de
+     * escritura no deje la API abierta sin avisar.
+     */
+    @Bean
+    AuthMode authMode(@Value("${sched.auth}") String value, Role role) {
+        AuthMode mode = AuthMode.parse(value);
+        if (mode == AuthMode.NONE && role.servesQueries()) {
+            log.warn("SCHED_AUTH=none: la API acepta el contexto del estudiante SIN firmar ni autenticar. "
+                    + "Cualquiera que llegue al puerto HTTP puede consultar como cualquier estudiante. "
+                    + "Úselo solo en desarrollo o pruebas (ADR 0004)");
+        }
+        return mode;
+    }
+
+    /**
+     * Token firmado por la institución (ADR 0004). Sin llaves públicas, con emisor o audiencia sin
+     * configurar o con valores inválidos, el servidor no arranca. Spring Boot lo registra como
+     * filtro del servlet.
+     */
+    @Bean
+    @ConditionalOnExpression("(" + SERVES_QUERIES + ") and '${sched.auth}' == 'jwt'")
+    JwtAuthFilter jwtAuthFilter(
+            @Value("${sched.jwt.public-keys}") String publicKeys,
+            @Value("${sched.jwt.issuer}") String issuer,
+            @Value("${sched.jwt.audience}") String audience,
+            @Value("${sched.jwt.clock-skew-s}") long clockSkewSeconds,
+            @Value("${sched.jwt.max-ttl-s}") long maxTtlSeconds,
+            RequestLimits limits) {
+        var keys = PublicKeys.load(publicKeys);
+        if (issuer.isBlank() || audience.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Con SCHED_AUTH=jwt, SCHED_JWT_ISSUER y SCHED_JWT_AUDIENCE son obligatorios");
+        }
+        var settings = new JwtVerifier.Settings(issuer, audience,
+                Duration.ofSeconds(clockSkewSeconds), Duration.ofSeconds(maxTtlSeconds));
+        log.info("autenticación por token firmado (EdDSA): kid={}, emisor={}, audiencia={}, vida máxima={} s",
+                keys.keySet(), issuer, audience, maxTtlSeconds);
+        return new JwtAuthFilter(new JwtVerifier(keys, settings), limits);
+    }
+
+    /** Spring Boot lo registra solo como filtro del servlet. */
+    @Bean
+    BodySizeLimitFilter bodySizeLimitFilter(RequestLimits limits) {
+        return new BodySizeLimitFilter(limits.maxBodyBytes());
+    }
+
+    @Bean
+    HttpExceptionHandler httpExceptionHandler() {
+        return new HttpExceptionHandler();
+    }
+
+    @Bean
     @ConditionalOnExpression(SERVES_QUERIES)
     CombinationsController combinationsController(
-            CatalogReplica replica, @Value("${sched.max-combinations}") int maxCombinations) {
-        return new CombinationsController(new GenerateCombinations(new BacktrackingSolver(), replica, maxCombinations));
+            Solver solver,
+            CatalogReplica replica,
+            @Value("${sched.max-combinations}") int maxCombinations,
+            @Value("${sched.search-timeout-ms}") long timeoutMs,
+            RequestLimits limits,
+            EngineMetrics metrics) {
+        return new CombinationsController(
+                new GenerateCombinations(solver, replica, maxCombinations, searchTimeout(timeoutMs), metrics), limits);
+    }
+
+    @Bean
+    @ConditionalOnExpression(SERVES_QUERIES)
+    AlternativesController alternativesController(
+            Solver solver,
+            CatalogReplica replica,
+            @Value("${sched.max-alternatives}") int maxAlternatives,
+            @Value("${sched.search-timeout-ms}") long timeoutMs,
+            RequestLimits limits,
+            EngineMetrics metrics) {
+        return new AlternativesController(
+                new SuggestAlternatives(solver, replica, maxAlternatives, searchTimeout(timeoutMs), metrics), limits);
+    }
+
+    /** {@code SCHED_SEARCH_TIMEOUT_MS = 0} desactiva el tiempo máximo (ADR 0009). */
+    private static Duration searchTimeout(long millis) {
+        if (millis < 0) {
+            throw new IllegalArgumentException("SCHED_SEARCH_TIMEOUT_MS no puede ser negativo: " + millis);
+        }
+        return millis == 0 ? null : Duration.ofMillis(millis);
     }
 
     // gRPC de ingesta, según el rol.
@@ -91,13 +304,20 @@ class EngineConfig {
     @ConditionalOnExpression(INGESTS)
     IngestGrpcServer ingestGrpcServer(
             @Value("${sched.grpc.port}") int port,
+            @Value("${sched.grpc.tls}") String tlsMode,
+            @Value("${sched.grpc.tls-cert}") String tlsCert,
+            @Value("${sched.grpc.tls-key}") String tlsKey,
+            @Value("${sched.grpc.tls-client-ca}") String tlsClientCa,
             CatalogReplica replica,
             Readiness readiness,
+            EngineMetrics metrics,
             JetStreamCatalogLog catalogLog) {
+        // Las credenciales se arman aquí, no al abrir el puerto: sin archivos válidos no arranca.
+        ServerCredentials credentials = GrpcCredentials.server(tlsMode, tlsCert, tlsKey, tlsClientCa);
         IngestState ingest = new IngestState(replica);
-        return new IngestGrpcServer(port, readiness, List.of(
-                new CatalogGrpcService(new IngestCatalog(ingest, catalogLog)),
-                new CatalogEventsGrpcService(new IngestCatalogEvent(ingest, catalogLog)),
+        return new IngestGrpcServer(port, credentials, readiness, List.of(
+                new CatalogGrpcService(new IngestCatalog(ingest, catalogLog, metrics)),
+                new CatalogEventsGrpcService(new IngestCatalogEvent(ingest, catalogLog, metrics)),
                 // Reflection: grpcurl, grpcui y Postman descubren los servicios sin los .proto.
                 ProtoReflectionServiceV1.newInstance()));
     }

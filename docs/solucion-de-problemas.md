@@ -1,5 +1,7 @@
 # Solución de problemas
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [gRPC](conceptos-base.md#grpc-y-protocol-buffers) (llamadas remotas entre programas con mensajes binarios); [TLS/mTLS](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (conexión cifrada; en mTLS el servidor también exige certificado al cliente); [CA](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (autoridad que firma certificados); [PEM/PKCS#8/SAN](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (formato de texto de llaves y certificados, tipo de llave privada y lista de nombres válidos de un certificado); [JWT/Bearer](conceptos-base.md#jwt-y-bearer) (token firmado enviado en `Authorization: Bearer`); [kid](conceptos-base.md#kid-el-identificador-de-la-llave) (nombre de la llave con que se firmó el token); [NATS/JetStream](conceptos-base.md#nats-y-jetstream) (mensajería que guarda en orden el historial del catálogo); [JVM/JIT](conceptos-base.md#jit-y-calentamiento) (la máquina virtual de Java y su compilador que optimiza el código mientras corre); [Traefik](conceptos-base.md#traefik) (balanceador de carga); [Maven](conceptos-base.md#maven-y-el-wrapper-mvnw) (herramienta de compilación y pruebas); [Docker/Compose](conceptos-base.md#docker) (contenedores y su orquestación local).
+
 Errores comunes al correr el motor y cómo resolverlos. Si encuentras uno que no está aquí,
 agrégalo.
 
@@ -25,6 +27,18 @@ chmod +x mvnw
 
 En Windows usa `mvnw.cmd`.
 
+### `permission denied while trying to connect to the Docker daemon socket`
+
+Tu usuario no puede usar Docker sin `sudo`. En Linux, agrégalo al grupo `docker` y **cierra sesión y vuelve a
+entrar** (o abre una terminal nueva con `newgrp docker`):
+
+```sh
+sudo usermod -aG docker $USER
+docker run --rm hello-world     # debe funcionar sin sudo
+```
+
+Lo necesitan el camino B, la imagen del motor y las pruebas de integración con Testcontainers.
+
 ## Arranque del motor
 
 ### `Unable to connect to NATS servers: [nats://localhost:4222]`
@@ -32,7 +46,7 @@ En Windows usa `mvnw.cmd`.
 El motor siempre necesita NATS, incluso con `SCHED_ROLE=all`. Levántalo:
 
 ```sh
-docker run -d --rm --name sched-nats -p 4222:4222 nats:2 -js
+docker run -d --rm --name sched-nats -p 127.0.0.1:4222:4222 nats:2 -js
 ```
 
 Si NATS está en otra dirección, indícala con `SCHED_NATS_URL`. El `-js` es obligatorio: sin
@@ -45,8 +59,15 @@ corriendo. Opciones:
 
 ```sh
 docker compose -f deploy/docker-compose.yml down   # si es el despliegue
-SCHED_HTTP_PORT=8081 java -jar server/target/sched-server.jar
+SCHED_HTTP_PORT=8082 java -jar server/target/sched-server-exec.jar
 ```
+
+Ojo al elegir el puerto alternativo: el `8081` **no** sirve. Es el puerto de administración
+(`SCHED_MANAGEMENT_PORT`: métricas y estado interno, sin token). Si le das el mismo número a
+`SCHED_HTTP_PORT`, el motor arranca, pero la API de los estudiantes y las rutas de administración
+(`/actuator/prometheus`) quedan mezcladas en un solo puerto, y se pierde la separación que
+protege las métricas. Usa otro libre (`8082` en el ejemplo) o cambia el de administración con
+`SCHED_MANAGEMENT_PORT`.
 
 Para ver qué usa el puerto: `ss -ltnp | grep 8080` en Linux, `lsof -i :8080` en macOS.
 
@@ -60,6 +81,11 @@ datos.
 
 Los únicos valores válidos son `ingest`, `query` y `all`.
 
+### Quiero ver más detalle en el log del motor
+
+Sube el nivel con una variable de entorno, por ejemplo `LOGGING_LEVEL_SCHED=DEBUG` (solo el código del motor).
+Cómo se escriben estas variables y qué evitar: [Métricas y logs](inicio-rapido.md#métricas-y-logs).
+
 ## Datos y consultas
 
 ### `/combinations` responde `503 el catálogo aún no se ha cargado`
@@ -72,7 +98,37 @@ java -jar simulation/target/sched-simulation.jar load
 docker compose -f deploy/docker-compose.yml run --rm simulator load
 ```
 
-`/ready` puede estar en `200` y aun así no haber catálogo: ver [api-http.md](api-http.md#sondas).
+`/ready` responde `503` mientras no haya catálogo: ver [api-http.md](api-http.md#sondas).
+
+### El simulador dice `error: la ingesta exige TLS con autenticación mutua`
+
+La ingesta exige mTLS por defecto. Pasa `--tls-cert`, `--tls-key` y `--tls-ca` (o sus variables
+`SCHED_INGEST_TLS_*`); con `deploy/setup-dev.sh` ya están en `deploy/certs/client`. Contra un
+motor con `SCHED_GRPC_TLS=disabled` usa `--plaintext`. Ver [simulador.md](simulador.md).
+
+### El simulador dice `error: UNAVAILABLE: ssl exception` o `Network closed for unknown reason`
+
+El handshake TLS falló. Casos típicos: el certificado de cliente no está firmado por la CA que
+configuró el motor (`SCHED_GRPC_TLS_CLIENT_CA`); el simulador no confía en la CA del servidor
+(`--tls-ca`); el nombre de `SCHED_INGEST_URL` no figura en el SAN del certificado del servidor
+(en desarrollo, `ingest` o `localhost`); o conectas sin TLS a una ingesta que lo exige (o al revés).
+Los certificados vencen: regenera con `deploy/setup-dev.sh --force`.
+
+### El motor no arranca: `SCHED_JWT_PUBLIC_KEYS no está configurado` o `SCHED_GRPC_TLS_CERT no está configurado`
+
+Es intencional: con la seguridad por defecto el motor no arranca sin llaves públicas ni
+certificados. Configúralos (ver la [tabla de seguridad](inicio-rapido.md#seguridad)) o, solo en
+desarrollo, usa `SCHED_AUTH=none` y `SCHED_GRPC_TLS=disabled`.
+
+### La API responde `401 {"error":"unauthorized"}`
+
+Falta `Authorization: Bearer <token>`, o el token es inválido. El cuerpo es el mismo para todo
+motivo; el motivo exacto (`firma_invalida`, `vencido`, `emisor_incorrecto`, `kid_desconocido`…)
+queda en el log del motor, con el `kid` y sin el token (`token rechazado: motivo=…`). Revisa que
+`iss` y `aud` coincidan con `SCHED_JWT_ISSUER` y `SCHED_JWT_AUDIENCE`, que el `kid` esté entre las
+llaves del motor, que `exp - iat` no supere `SCHED_JWT_MAX_TTL_S` y que los relojes estén
+sincronizados (tolerancia: `SCHED_JWT_CLOCK_SKEW_S`). Los rechazos baratos (formato, `alg`, `kid`, vencimiento, `iss`, `aud`) se
+evalúan antes que la firma: un token con la firma mala y además vencido se registra como `vencido`.
 
 ### El simulador dice `error: UNAVAILABLE: io exception`
 
@@ -87,7 +143,8 @@ Comprueba que:
 ### Las respuestas llegan con `stale: true`
 
 Es esperado después de usar `seats` del simulador, porque cierra la conexión de cambios, o
-después de un hueco de `seq`. Se corrige con el siguiente cambio en orden o con un `load`. Ver
+después de un hueco de `seq`. Mientras tanto `/ready` responde `503` y el balanceador deja de
+enviar tráfico a la réplica; si todas están `stale`, no queda ninguna lista hasta el `load`. Se corrige con el siguiente cambio en orden o con un `load`. Ver
 [api-http.md](api-http.md#cuándo-stale-es-true).
 
 ### `schedules` llega vacío
@@ -108,20 +165,37 @@ El `seq` que enviaste no es el siguiente esperado. El mensaje dice cuál se espe
 ### Las réplicas `engine` no pasan a `healthy`
 
 El healthcheck consulta `/ready`, que responde `200` cuando la réplica terminó de leer el
-historial de NATS. Revisa los logs:
+historial de NATS y tiene un catálogo fresco (por eso, con el historial vacío, no pasan a
+`healthy` hasta la primera carga con `load`). Revisa los logs:
 
 ```sh
 docker compose -f deploy/docker-compose.yml logs engine
 docker compose -f deploy/docker-compose.yml logs nats
 ```
 
+Con `SCHED_WARMUP=on` (por defecto) la réplica tampoco está lista hasta que termina de calentar la JVM: tras
+cargar el catálogo tarda entre 10 y 60 s más en pasar a `healthy` (la imagen declara `--start-period=90s` para
+que ese tiempo no cuente como fallos). Lo ve en el log (`calentamiento iniciado` / `calentamiento terminado`)
+y en la métrica `sched_warmup_duration_seconds` (`-1` mientras dura). Para saltarlo en desarrollo:
+`SCHED_WARMUP=off`.
+
 Lo habitual es que NATS no esté arriba todavía. El motor se reinicia solo (`restart:
 unless-stopped`) y se recupera cuando NATS responde.
 
 ### Traefik responde `404` o `Bad Gateway`
 
-Ninguna réplica está `healthy` todavía (ver el punto anterior). En el panel
-<http://localhost:8090> se ven las réplicas que Traefik tiene registradas.
+Ninguna réplica está `healthy` todavía (ver el punto anterior). El panel de Traefik está
+desactivado por seguridad; para ver qué tiene registrado, usa `docker compose … logs lb`.
+
+### Traefik responde `429` o `413`
+
+Es el límite por IP (`RATE_LIMIT_AVERAGE` y `RATE_LIMIT_BURST` en `deploy/.env`), el de solicitudes
+simultáneas (`INFLIGHT_MAX`) o el de cuerpo (`MAX_BODY_BYTES`). Con el despliegue local todas las
+solicitudes llegan desde la misma IP, así que una prueba de carga las alcanza enseguida.
+
+### `docker compose` dice `falta deploy/.env`
+
+Ejecuta `deploy/setup-dev.sh`: genera los certificados, las llaves del token y la contraseña de NATS.
 
 ### Traefik no descubre los contenedores
 

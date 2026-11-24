@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>sched</groupId>
+        <artifactId>sched-engine</artifactId>
+        <version>0.1.0</version>
+    </parent>
+
+    <artifactId>sched-quality</artifactId>
+    <description>
+        Reglas de arquitectura (ArchUnit) sobre todos los módulos y reporte agregado de cobertura
+        (JaCoCo, target/site/jacoco-aggregate). No tiene código de producción ni se despliega.
+    </description>
+
+    <dependencies>
+        <!--
+          Los módulos que mide el reporte agregado. Se omiten simulation y benchmarks: su artefacto
+          es un jar "sombreado" que trae copias de todas sus dependencias y falsearía el reporte.
+          Las reglas de arquitectura sí los revisan (leen sus target/classes, ver surefire abajo).
+        -->
+        <dependency><groupId>sched</groupId><artifactId>sched-domain</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-solver</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-application</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-proto</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-adapter-in-memory</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-adapter-grpc-catalog</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-adapter-grpc-events</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-adapter-nats-bus</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-adapter-gateway-http</artifactId></dependency>
+        <dependency><groupId>sched</groupId><artifactId>sched-server</artifactId><version>${project.version}</version></dependency>
+
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Clases de todos los módulos, también simulation y benchmarks (que quality no lleva como dependencia). -->
+                        <sched.classes.dirs>${project.basedir}/../domain/target/classes,${project.basedir}/../solver/target/classes,${project.basedir}/../application/target/classes,${project.basedir}/../proto/target/classes,${project.basedir}/../adapters/in-memory/target/classes,${project.basedir}/../adapters/grpc-catalog/target/classes,${project.basedir}/../adapters/grpc-events/target/classes,${project.basedir}/../adapters/nats-bus/target/classes,${project.basedir}/../adapters/gateway-http/target/classes,${project.basedir}/../server/target/classes,${project.basedir}/../simulation/target/classes,${project.basedir}/../benchmarks/target/classes</sched.classes.dirs>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>report-aggregate</id>
+                        <phase>verify</phase>
+                        <goals><goal>report-aggregate</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

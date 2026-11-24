@@ -4,7 +4,9 @@ import java.util.ArrayList;
 import java.util.List;
 import sched.domain.CatalogChange;
 import sched.domain.CatalogEvent;
+import sched.domain.Course;
 import sched.domain.CourseId;
+import sched.domain.EnrollmentRules;
 import sched.domain.Section;
 import sched.domain.SectionId;
 import sched.domain.SectionSeats;
@@ -42,6 +44,37 @@ public final class Convert {
         Section section = new Section(
                 new SectionId(pb.getSectionId()), new CourseId(pb.getCourseId()), slots, pb.getCapacity());
         return new SectionSeats(section, pb.getAvailableSeats());
+    }
+
+    /** Asignatura con sus créditos; los créditos no pueden ser negativos. */
+    public static Course course(sched.proto.institution.v1.Course pb) throws ConversionException {
+        if (pb.getCourseId().isEmpty()) {
+            throw new ConversionException("asignatura sin identificador de curso");
+        }
+        // uint32 llega como int en Java: un valor mayor que Integer.MAX_VALUE se ve negativo.
+        if (pb.getCredits() < 0) {
+            throw new ConversionException("créditos fuera de rango en el curso " + pb.getCourseId());
+        }
+        return new Course(new CourseId(pb.getCourseId()), pb.getCredits());
+    }
+
+    /** Reglas del periodo; {@code max_credits} debe estar en el rango de un {@code int} no negativo. */
+    public static EnrollmentRules rules(sched.proto.institution.v1.EnrollmentRules pb) throws ConversionException {
+        if (pb.getMaxCredits() < 0) {
+            throw new ConversionException("max_credits fuera de rango");
+        }
+        return new EnrollmentRules(pb.getMaxCredits());
+    }
+
+    public static sched.proto.institution.v1.Course courseToPb(Course course) {
+        return sched.proto.institution.v1.Course.newBuilder()
+                .setCourseId(course.id().value())
+                .setCredits(course.credits())
+                .build();
+    }
+
+    public static sched.proto.institution.v1.EnrollmentRules rulesToPb(EnrollmentRules rules) {
+        return sched.proto.institution.v1.EnrollmentRules.newBuilder().setMaxCredits(rules.maxCredits()).build();
     }
 
     public static CatalogEvent catalogEvent(sched.proto.institution.v1.CatalogEvent pb) throws ConversionException {

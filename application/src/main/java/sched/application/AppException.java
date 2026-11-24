@@ -34,6 +34,33 @@ public abstract sealed class AppException extends Exception {
         }
     }
 
+    /** Los créditos de los cursos pedidos superan el tope del periodo; no se hizo la búsqueda. */
+    public static final class CreditLimitExceeded extends AppException {
+        private final int totalCredits;
+        private final int maxCredits;
+
+        public CreditLimitExceeded(int totalCredits, int maxCredits) {
+            super("los cursos pedidos suman " + totalCredits + " créditos y el máximo es " + maxCredits, null);
+            this.totalCredits = totalCredits;
+            this.maxCredits = maxCredits;
+        }
+
+        public int totalCredits() {
+            return totalCredits;
+        }
+
+        public int maxCredits() {
+            return maxCredits;
+        }
+    }
+
+    /** La selección actual del estudiante no es coherente con sus cursos o con el catálogo. */
+    public static final class InvalidSelection extends AppException {
+        public InvalidSelection(String message) {
+            super(message, null);
+        }
+    }
+
     /** Falló un adaptador. */
     public static final class PortFailure extends AppException {
         private final PortException.Kind kind;

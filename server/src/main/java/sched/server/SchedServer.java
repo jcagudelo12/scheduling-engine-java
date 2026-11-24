@@ -9,11 +9,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class SchedServer {
 
     public static void main(String[] args) {
+        SpringApplication.run(SchedServer.class, args);
         // La JVM ajusta sus hilos (recolector, compilador, hilos virtuales) a las CPUs
         // detectadas; en un contenedor debe coincidir con su límite de CPU. La prueba de
-        // carga (bench/) verifica este valor.
+        // carga (bench/) verifica este valor. Se registra con el log ya configurado: antes
+        // saldría en texto plano en medio de un log JSON (SCHED_LOG_FORMAT=json).
         LoggerFactory.getLogger(SchedServer.class)
                 .info("CPUs detectadas: cpus={}", Runtime.getRuntime().availableProcessors());
-        SpringApplication.run(SchedServer.class, args);
     }
 }

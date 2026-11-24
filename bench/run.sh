@@ -94,7 +94,8 @@ for rep in $(seq 1 "$REPS"); do
 
   start=$(date +%s%N)
   $C up -d "$ENGINE" >/dev/null 2>&1
-  wait_http "http://localhost:$HTTP/ready" 200
+  # /ready exige catálogo cargado, así que el arranque se mide hasta que el proceso responde.
+  wait_http "http://localhost:$HTTP/health" 200
   echo $(( ($(date +%s%N) - start) / 1000000 )) > "$OUT/${prefix}_startup_ms.txt"
 
   cpus=$($C logs "$ENGINE" 2>&1 | grep -oE 'cpus[=:] ?[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
@@ -103,9 +104,10 @@ for rep in $(seq 1 "$REPS"); do
     echo "    AVISO: el motor detectó ${cpus:-?} CPUs; se esperaban $EXPECTED_CPUS" >&2
   fi
 
-  # El gRPC de ingesta abre justo después de /ready: se reintenta como lo haría el SDK.
+  # El gRPC de ingesta abre cuando el follower se pone al día: se reintenta como lo haría el SDK.
   for attempt in $(seq 1 50); do
-    SCHED_INGEST_URL="localhost:$GRPC" java -jar "$SIMULATOR" load bench/scenario.json >/dev/null 2>&1 && break
+    # SCHED_INGEST_TLS=disabled: el motor de la prueba corre con SCHED_GRPC_TLS=disabled.
+    SCHED_INGEST_TLS=disabled SCHED_INGEST_URL="localhost:$GRPC" java -jar "$SIMULATOR" load bench/scenario.json >/dev/null 2>&1 && break
     [ "$attempt" = 50 ] && { echo "no se pudo cargar el catálogo" >&2; exit 1; }
     sleep 0.2
   done

@@ -51,4 +51,16 @@ class BacktrackingSolverTest {
                 section("MAT-02", "MAT", Weekday.TUESDAY, 420, 540)), 1, "MAT");
         assertEquals(1, new BacktrackingSolver().solve(p).size());
     }
+
+    @Test
+    void repeatedCoursesYieldOneSectionPerCourse() {
+        Problem p = problem(List.of(
+                section("MAT-01", "MAT", Weekday.MONDAY, 420, 540),
+                section("MAT-02", "MAT", Weekday.TUESDAY, 420, 540)), 100, "MAT", "MAT");
+
+        List<Schedule> schedules = new BacktrackingSolver().solve(p);
+
+        assertEquals(2, schedules.size());
+        assertTrue(schedules.stream().allMatch(s -> s.sections().size() == 1));
+    }
 }

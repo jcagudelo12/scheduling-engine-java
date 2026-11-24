@@ -119,3 +119,9 @@ cada mecanismo es un adaptador distinto del puerto Fuente Académica (ADR 0007).
 
 Abierta. Se elige en el Bloque 3, con las tácticas. Antes hay que confirmar S3 con TI: el costo
 real de la lectura completa decide si A sirve o no.
+
+## Términos técnicos de este ADR
+
+Este ADR describe una **propuesta**: nada de lo que menciona existe todavía en el código. CDC (*Change Data Capture*), Debezium y *triggers* son técnicas para detectar qué cambió en una base de datos sin releerla entera. Se explican
+desde cero, con enlaces, en [conceptos-base.md](../conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc);
+el resto del vocabulario, en el [glosario](../glosario.md).

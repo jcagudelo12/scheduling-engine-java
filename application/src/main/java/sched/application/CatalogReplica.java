@@ -10,8 +10,11 @@ import sched.domain.SequenceGapException;
  * Réplica en memoria del catálogo institucional (ADR 0003), compartida entre casos de uso.
  *
  * <p>Queda desactualizada ({@code stale}) cuando se detecta un hueco de secuencia o se pierde
- * la conexión con la institución. Vuelve a estar al día con una carga completa o cuando se
- * aplica el siguiente evento sin huecos (tras un hueco eso solo ocurre después de recargar).
+ * la conexión con la institución. Vuelve a estar al día con una carga completa o, si solo se
+ * perdió la conexión, cuando se aplica el siguiente evento sin huecos. Tras un hueco de
+ * secuencia ({@code gap}) solo una carga completa la recupera: aplicar luego eventos sueltos
+ * (p. ej. el faltante llegado fuera de orden) no puede dar por bueno un historial al que le
+ * falta algo.
  */
 public final class CatalogReplica {
 
@@ -24,6 +27,8 @@ public final class CatalogReplica {
     private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
     private Catalog catalog;
     private boolean stale;
+    /** Se vio un hueco de secuencia; solo {@link #replace} lo limpia. */
+    private boolean gap;
 
     public <T> T read(Reader<T> reader) throws AppException.CatalogUnavailable {
         lock.readLock().lock();
@@ -51,6 +56,7 @@ public final class CatalogReplica {
         try {
             catalog = replacement;
             stale = false;
+            gap = false;
         } finally {
             lock.writeLock().unlock();
         }
@@ -62,14 +68,22 @@ public final class CatalogReplica {
             if (catalog == null) {
                 throw new AppException.CatalogUnavailable();
             }
+            if (gap) {
+                // No se aplica nada hasta la siguiente carga completa.
+                if (event.seq() <= catalog.seq()) {
+                    return ApplyOutcome.DUPLICATE;
+                }
+                throw new SequenceGapException(catalog.seq() + 1, event.seq());
+            }
             ApplyOutcome outcome = catalog.apply(event);
             if (outcome == ApplyOutcome.APPLIED) {
                 stale = false;
             }
             return outcome;
-        } catch (SequenceGapException gap) {
+        } catch (SequenceGapException e) {
             stale = true;
-            throw new AppException.SequenceGap(gap);
+            gap = true;
+            throw new AppException.SequenceGap(e);
         } finally {
             lock.writeLock().unlock();
         }

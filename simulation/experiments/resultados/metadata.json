@@ -1,0 +1,126 @@
+{
+  "seed" : 42,
+  "profiles" : 500,
+  "version" : "7c1b999-dirty",
+  "date" : "2026-11-22T05:36:45.478835872Z",
+  "java" : "25.0.4.1",
+  "configFile" : "simulation/experiments/calibrated.json",
+  "streams" : [ "offer", "profiles", "arrivals", "behavior-time", "behavior-choice" ],
+  "offer" : {
+    "courses" : 134,
+    "sections" : 424,
+    "seats" : 2499,
+    "maxCredits" : 20
+  },
+  "coursesEnrolledMean" : {
+    "A" : 4.164,
+    "B" : 4.374,
+    "gapBMinusA" : 0.20999999999999996
+  },
+  "config" : {
+    "seed" : 42,
+    "profiles" : 500,
+    "calibrationFile" : "",
+    "offer" : {
+      "file" : null,
+      "slackFactor" : 0.9832816393860057,
+      "maxCredits" : 20,
+      "coursesPerSemester" : 5,
+      "sharedCoursesPerSemester" : 2,
+      "sharedUpToSemester" : 4,
+      "creditsMin" : 2,
+      "creditsMax" : 4,
+      "minSections" : 3,
+      "maxSections" : 6,
+      "targetGroupSize" : 14.194914136353738,
+      "minSeatsPerSection" : 2,
+      "sectionShift" : {
+        "manana" : 0.4,
+        "tarde" : 0.3,
+        "noche" : 0.3
+      },
+      "shiftAlignment" : 0.8345746779778226,
+      "popularSeatShare" : 0.9060149104831691,
+      "seatUnevenness" : 0.1795011082385195,
+      "extraBlockProbability" : 0.7370014217559966,
+      "popularitySkew" : 0.5221575539874203
+    },
+    "population" : {
+      "preference" : {
+        "manana" : 0.4,
+        "tarde" : 0.25,
+        "noche" : 0.35
+      }
+    },
+    "arrivals" : {
+      "windowStartSeconds" : [ 0.0, 86400.0, 172800.0 ],
+      "windowWeights" : [ 1.0, 1.0, 1.0 ],
+      "arrivalsPerMinute" : 21.530380610026278,
+      "rushShare" : 0.769178892154739,
+      "rushMeanSeconds" : 37.11767862974679
+    },
+    "platform" : {
+      "seatEventLatencySeconds" : 2.0
+    },
+    "engine" : {
+      "solver" : "forward-checking",
+      "maxResults" : 50,
+      "maxAlternatives" : 5,
+      "timeMode" : "measured",
+      "pickBestProbability" : 0.7,
+      "pickTop" : 5,
+      "usePreferences" : true
+    },
+    "times" : {
+      "browseCourse" : {
+        "meanSeconds" : 219.03981363407334,
+        "cv" : 0.6633399991119826
+      },
+      "chooseSection" : {
+        "meanSeconds" : 35.062612881524984,
+        "cv" : 0.6633399991119826
+      },
+      "submitSection" : {
+        "meanSeconds" : 61.24927085565122,
+        "cv" : 0.6633399991119826
+      },
+      "readRejection" : {
+        "meanSeconds" : 60.715425893401026,
+        "cv" : 0.6633399991119826
+      },
+      "withdraw" : {
+        "meanSeconds" : 132.98546332900304,
+        "cv" : 0.6633399991119826
+      },
+      "confirm" : {
+        "meanSeconds" : 113.65310786333185,
+        "cv" : 0.6633399991119826
+      },
+      "reviewCombination" : {
+        "meanSeconds" : 25.0,
+        "cv" : 0.6
+      },
+      "reviewAlternative" : {
+        "meanSeconds" : 25.0,
+        "cv" : 0.6
+      }
+    },
+    "behavior" : {
+      "preferenceStrength" : 3.201765845242955,
+      "clashAwareness" : 0.15649948501227018,
+      "plannerShare" : 0.17908886069249275,
+      "plannerAwareness" : 0.9,
+      "awarenessConcentration" : 13.856331177718788,
+      "speedCv" : 0.17789132541757174,
+      "deferOnExhaustProbability" : 0.21704525981091038,
+      "maxRetreatsPerCourse" : 2,
+      "maxSubmissions" : 60,
+      "maxAlternativeRounds" : 10,
+      "nearLossSeats" : 2,
+      "staleViewProbability" : 0.09081130291817571,
+      "combinationsReviewed" : 5,
+      "alternativesReviewed" : 3,
+      "assistedBrowseFactor" : 1.0
+    }
+  }
+}

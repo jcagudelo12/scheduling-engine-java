@@ -1,0 +1,74 @@
+{
+  "seed": 42,
+  "profiles": 500,
+  "calibrationFile": "",
+  "offer": {
+    "file": null,
+    "slackFactor": 1.1,
+    "maxCredits": 20,
+    "coursesPerSemester": 5,
+    "sharedCoursesPerSemester": 2,
+    "sharedUpToSemester": 4,
+    "creditsMin": 2,
+    "creditsMax": 4,
+    "minSections": 2,
+    "maxSections": 6,
+    "targetGroupSize": 25,
+    "minSeatsPerSection": 2,
+    "sectionShift": { "manana": 0.40, "tarde": 0.30, "noche": 0.30 },
+    "shiftAlignment": 0.85,
+    "popularSeatShare": 0.7,
+    "seatUnevenness": 0.7,
+    "extraBlockProbability": 0.2,
+    "popularitySkew": 0.5
+  },
+  "population": {
+    "preference": { "manana": 0.40, "tarde": 0.25, "noche": 0.35 }
+  },
+  "arrivals": {
+    "windowStartSeconds": [0, 86400, 172800],
+    "windowWeights": [1, 1, 1],
+    "arrivalsPerMinute": 6.0,
+    "rushShare": 0.3,
+    "rushMeanSeconds": 120
+  },
+  "platform": {
+    "seatEventLatencySeconds": 2.0
+  },
+  "engine": {
+    "solver": "forward-checking",
+    "maxResults": 50,
+    "maxAlternatives": 5,
+    "timeMode": "measured",
+    "pickBestProbability": 0.7,
+    "pickTop": 5,
+    "usePreferences": true
+  },
+  "times": {
+    "browseCourse": { "meanSeconds": 150, "cv": 0.6 },
+    "chooseSection": { "meanSeconds": 70, "cv": 0.6 },
+    "submitSection": { "meanSeconds": 20, "cv": 0.5 },
+    "readRejection": { "meanSeconds": 60, "cv": 0.6 },
+    "withdraw": { "meanSeconds": 45, "cv": 0.5 },
+    "confirm": { "meanSeconds": 90, "cv": 0.5 },
+    "reviewCombination": { "meanSeconds": 25, "cv": 0.6 },
+    "reviewAlternative": { "meanSeconds": 25, "cv": 0.6 }
+  },
+  "behavior": {
+    "preferenceStrength": 2.0,
+    "clashAwareness": 0.15,
+    "plannerShare": 0.111,
+    "plannerAwareness": 0.9,
+    "awarenessConcentration": 4.0,
+    "speedCv": 0.5,
+    "deferOnExhaustProbability": 0.31,
+    "maxRetreatsPerCourse": 2,
+    "maxSubmissions": 60,
+    "maxAlternativeRounds": 10,
+    "nearLossSeats": 2,
+    "staleViewProbability": 0.3,
+    "combinationsReviewed": 5,
+    "alternativesReviewed": 3,
+    "assistedBrowseFactor": 1.0
+  }
+}

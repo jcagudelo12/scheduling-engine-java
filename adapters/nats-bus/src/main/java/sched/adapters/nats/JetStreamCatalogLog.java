@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import sched.application.CatalogLogEntry;
 import sched.application.PortException;
 import sched.application.ports.CatalogLog;
+import sched.domain.Course;
+import sched.domain.EnrollmentRules;
 import sched.domain.SectionSeats;
 import sched.proto.Convert;
 import sched.proto.engine.v1.SnapshotChunk;
@@ -27,7 +29,7 @@ public final class JetStreamCatalogLog implements CatalogLog {
 
     private static final Logger log = LoggerFactory.getLogger(JetStreamCatalogLog.class);
 
-    /** Grupos por mensaje en una carga completa, para no superar el tamaño máximo de NATS. */
+    /** Grupos (y, aparte, cursos) por mensaje en una carga completa, para no superar el tamaño máximo de NATS. */
     private static final int SECTIONS_PER_CHUNK = 500;
 
     private final JetStream js;
@@ -62,7 +64,8 @@ public final class JetStreamCatalogLog implements CatalogLog {
     public void append(CatalogLogEntry entry) throws PortException {
         var builder = sched.proto.engine.v1.CatalogLogEntry.newBuilder();
         switch (entry) {
-            case CatalogLogEntry.Snapshot(long seq, List<SectionSeats> sections) -> appendSnapshot(seq, sections);
+            case CatalogLogEntry.Snapshot(long seq, List<SectionSeats> sections, List<Course> courses, EnrollmentRules rules) ->
+                    appendSnapshot(seq, sections, courses, rules);
             case CatalogLogEntry.Change(var event) ->
                     publish("change", builder.setChange(Convert.catalogEventToPb(event)).build());
             case CatalogLogEntry.SyncLost() -> publish("sync", builder.setSyncLost(
@@ -70,14 +73,21 @@ public final class JetStreamCatalogLog implements CatalogLog {
         }
     }
 
-    private void appendSnapshot(long seq, List<SectionSeats> sections) throws PortException {
-        int total = Math.max(1, (sections.size() + SECTIONS_PER_CHUNK - 1) / SECTIONS_PER_CHUNK);
+    private void appendSnapshot(long seq, List<SectionSeats> sections, List<Course> courses, EnrollmentRules rules)
+            throws PortException {
+        // Los bloques alcanzan para repartir tanto los grupos como los cursos.
+        int total = Math.max(1, Math.max(chunksFor(sections.size()), chunksFor(courses.size())));
         long firstSequence = -1;
         for (int index = 0; index < total; index++) {
             var chunk = SnapshotChunk.newBuilder().setSeq(seq).setIndex(index).setTotal(total);
-            int from = index * SECTIONS_PER_CHUNK;
-            for (SectionSeats s : sections.subList(from, Math.min(sections.size(), from + SECTIONS_PER_CHUNK))) {
+            for (SectionSeats s : slice(sections, index)) {
                 chunk.addSections(Convert.sectionToPb(s.section(), s.available()));
+            }
+            for (Course course : slice(courses, index)) {
+                chunk.addCourses(Convert.courseToPb(course));
+            }
+            if (index == 0) {
+                chunk.setRules(Convert.rulesToPb(rules));
             }
             long sequence = publish("snapshot",
                     sched.proto.engine.v1.CatalogLogEntry.newBuilder().setSnapshotChunk(chunk).build());
@@ -86,6 +96,16 @@ public final class JetStreamCatalogLog implements CatalogLog {
             }
         }
         purgeBefore(firstSequence);
+    }
+
+    private static int chunksFor(int items) {
+        return (items + SECTIONS_PER_CHUNK - 1) / SECTIONS_PER_CHUNK;
+    }
+
+    /** Elementos que le tocan al bloque {@code index}; vacío si la lista ya se agotó. */
+    private static <T> List<T> slice(List<T> items, int index) {
+        int from = Math.min(items.size(), index * SECTIONS_PER_CHUNK);
+        return items.subList(from, Math.min(items.size(), from + SECTIONS_PER_CHUNK));
     }
 
     private long publish(String kind, sched.proto.engine.v1.CatalogLogEntry entry) throws PortException {

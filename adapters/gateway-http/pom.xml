@@ -16,10 +16,68 @@
     <dependencies>
         <dependency><groupId>sched</groupId><artifactId>sched-application</artifactId></dependency>
         <dependency><groupId>org.springframework</groupId><artifactId>spring-webmvc</artifactId></dependency>
+        <!-- JSON de las cabeceras y los claims del token firmado (ADR 0004); sin librerías JWT. -->
+        <dependency><groupId>tools.jackson.core</groupId><artifactId>jackson-databind</artifactId></dependency>
+        <!-- Solo la aritmética Ed25519 (org.bouncycastle.math.ec.rfc8032) de la firma del token; ver ADR 0004. -->
+        <dependency><groupId>org.bouncycastle</groupId><artifactId>bcprov-jdk18on</artifactId></dependency>
+        <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId></dependency>
+        <!-- El filtro del tamaño del cuerpo; en ejecución lo aporta Tomcat. -->
+        <dependency>
+            <groupId>jakarta.servlet</groupId>
+            <artifactId>jakarta.servlet-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Un enlace de SLF4J para que el MDC funcione en las pruebas del id de correlación. -->
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- MockMvc independiente (sin levantar Spring Boot) para los casos que dependen de HTTP. -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-test</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
+
+    <profiles>
+        <!--
+          Pruebas de la lógica del cliente web (src/test/js) con el ejecutor nativo de Node
+          (Node 22.7 o superior). Opcional: la build normal no necesita Node.
+          Uso: ./mvnw -pl adapters/gateway-http -Pjs-tests test
+        -->
+        <profile>
+            <id>js-tests</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>exec-maven-plugin</artifactId>
+                        <version>3.5.0</version>
+                        <executions>
+                            <execution>
+                                <id>node-test</id>
+                                <phase>test</phase>
+                                <goals><goal>exec</goal></goals>
+                                <configuration>
+                                    <executable>node</executable>
+                                    <workingDirectory>${project.basedir}</workingDirectory>
+                                    <arguments>
+                                        <argument>--test</argument>
+                                        <argument>src/test/js/</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

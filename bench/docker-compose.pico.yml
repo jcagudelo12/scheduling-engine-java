@@ -1,0 +1,92 @@
+# Entorno de la prueba del pico (bench/run-pico.sh): NATS, la instancia de ingesta, hasta 3 réplicas
+# de consulta detrás de Traefik, cada una en núcleos fijos. Se levanta de cero en cada corrida.
+#
+#   docker compose -f bench/docker-compose.pico.yml up -d                    # 1 réplica (engine1)
+#   docker compose -f bench/docker-compose.pico.yml --profile r3 up -d       # 3 réplicas
+#
+# Igual que bench/docker-compose.yml, corre SIN seguridad a propósito (SCHED_AUTH=none,
+# SCHED_GRPC_TLS=disabled, NATS sin credenciales) en una red aislada y efímera. Nunca lo copie a un
+# despliegue real: ver deploy/docker-compose.yml.
+#
+# Traefik NO lleva aquí los límites por IP de deploy/docker-compose.yml (50 solicitudes/s por IP):
+# k6 sale de una sola IP y la prueba mediría el limitador, no el motor.
+
+name: bench-pico
+
+x-engine: &engine
+  image: sched-engine-java:dev
+  pull_policy: never
+  mem_limit: 1g
+  depends_on: [nats, ingest]
+  environment: &engine-env
+    SCHED_ROLE: query
+    SCHED_NATS_URL: nats://nats:4222
+    SCHED_AUTH: none
+    SCHED_MAX_COMBINATIONS: ${MAX_COMBINATIONS:-5}
+    # Calentamiento de la JVM antes de /ready (por defecto del motor: on). El healthcheck de la imagen espera a /ready, así que
+    # bench/run-pico.sh empieza la carga con la réplica ya caliente; SCHED_WARMUP=off bench/run-pico.sh reproduce el arranque en
+    # frío de report-pico.md (medido antes del calentamiento). Ver bench/results/warmup.md.
+    SCHED_WARMUP: ${SCHED_WARMUP:-on}
+    SCHED_SEARCH_TIMEOUT_MS: ${SEARCH_TIMEOUT_MS:-150}
+    LOGGING_LEVEL_ROOT: warn
+    LOGGING_LEVEL_SCHED_SERVER: info
+    # Opciones de la JVM para perfilar (p. ej. -XX:StartFlightRecording=...); vacío por defecto.
+    JAVA_TOOL_OPTIONS: ${ENGINE_JAVA_OPTS:-}
+  labels: &engine-labels
+    traefik.enable: "true"
+    traefik.http.routers.engine.rule: PathPrefix(`/`)
+    traefik.http.routers.engine.entrypoints: web
+    traefik.http.services.engine.loadbalancer.server.port: "8080"
+
+services:
+  nats:
+    image: nats:2
+    command: ["-js"]
+    cpuset: ${NATS_CPUS:-5,7}
+
+  ingest:
+    image: sched-engine-java:dev
+    pull_policy: never
+    cpuset: ${NATS_CPUS:-5,7}
+    mem_limit: 1g
+    depends_on: [nats]
+    environment:
+      SCHED_ROLE: ingest
+      SCHED_NATS_URL: nats://nats:4222
+      SCHED_AUTH: none
+      SCHED_GRPC_TLS: disabled
+      LOGGING_LEVEL_ROOT: warn
+      LOGGING_LEVEL_SCHED_SERVER: info
+    ports:
+      - "15051:50051"
+
+  engine1:
+    <<: *engine
+    cpuset: ${ENGINE1_CPUS:-4,6}
+
+  engine2:
+    <<: *engine
+    profiles: [r3]
+    cpuset: ${ENGINE2_CPUS:-8,10}
+
+  engine3:
+    <<: *engine
+    profiles: [r3]
+    cpuset: ${ENGINE3_CPUS:-12,14}
+
+  lb:
+    image: traefik:v3
+    pull_policy: never
+    cpuset: ${LB_CPUS:-0,1}
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --api=false
+      - --global.sendanonymoususage=false
+      - --log.level=WARN
+    ports:
+      # Solo para que el script espere la disponibilidad desde el host; k6 entra por la red interna.
+      - "18080:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro

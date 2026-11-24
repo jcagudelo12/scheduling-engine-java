@@ -4,14 +4,31 @@ target/
 # Resultados crudos de la prueba de carga (se regeneran con bench/run.sh)
 bench/scenario.json
 bench/students.json
+bench/alternatives.json
+bench/worst.json
+bench/worst-hot.json
+bench/drain.txt
 bench/results*/*.json
 bench/results*/*.txt
 bench/.venv/
 __pycache__/
 
+# Resultados crudos del experimento (los md y los json de resumen de simulation/experiments/ sí se versionan)
+simulation/experiments/**/results.csv
+
+# Catálogo de demostración generado (simulator demo-catalog)
+simulation/fixtures/demo.json
+
 # Salida de JMH ejecutado sin -rff
 jmh-result.*
+
+# Secretos de desarrollo del despliegue (los generan deploy/setup-dev.sh y deploy/certs/generate.sh)
+deploy/certs/*
+!deploy/certs/generate.sh
+deploy/keys/
+deploy/.env
 
 # IDE
 .idea/
 *.iml
+.jqwik-database

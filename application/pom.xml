@@ -13,6 +13,12 @@
     <artifactId>sched-application</artifactId>
     <description>Casos de uso y puertos (interfaces) del motor de horarios.</description>
 
+    <properties>
+        <!-- Núcleo: umbrales de cobertura (JaCoCo) que hacen fallar verify si bajan; medidos: ver CONTRIBUTING.md. -->
+        <jacoco.line.min>0.90</jacoco.line.min>
+        <jacoco.branch.min>0.75</jacoco.branch.min>
+    </properties>
+
     <dependencies>
         <dependency><groupId>sched</groupId><artifactId>sched-domain</artifactId></dependency>
         <dependency><groupId>sched</groupId><artifactId>sched-solver</artifactId></dependency>
@@ -20,6 +26,11 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.jqwik</groupId>
+            <artifactId>jqwik</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

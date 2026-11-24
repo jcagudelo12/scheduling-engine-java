@@ -2,8 +2,8 @@ package sched.server;
 
 import io.grpc.BindableService;
 import io.grpc.Grpc;
-import io.grpc.InsecureServerCredentials;
 import io.grpc.Server;
+import io.grpc.ServerCredentials;
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -21,13 +21,16 @@ final class IngestGrpcServer {
     private static final Logger log = LoggerFactory.getLogger(IngestGrpcServer.class);
 
     private final int port;
+    private final ServerCredentials credentials;
     private final Readiness readiness;
     private final List<BindableService> services;
     private volatile Server server;
     private Thread starter;
 
-    IngestGrpcServer(int port, Readiness readiness, List<BindableService> services) {
+    /** {@code port = 0} elige un puerto libre; {@link #boundPort()} dice cuál. */
+    IngestGrpcServer(int port, ServerCredentials credentials, Readiness readiness, List<BindableService> services) {
         this.port = port;
+        this.credentials = credentials;
         this.readiness = readiness;
         this.services = services;
     }
@@ -35,20 +38,26 @@ final class IngestGrpcServer {
     void start() {
         starter = Thread.ofVirtual().name("ingest-starter").start(() -> {
             try {
-                while (!readiness.isReady()) {
+                while (!readiness.isCaughtUp()) {
                     Thread.sleep(100);
                 }
-                var builder = Grpc.newServerBuilderForPort(port, InsecureServerCredentials.create())
+                var builder = Grpc.newServerBuilderForPort(port, credentials)
                         .executor(Executors.newVirtualThreadPerTaskExecutor());
                 services.forEach(builder::addService);
                 server = builder.build().start();
-                log.info("ingesta escuchando en gRPC :{}", port);
+                log.info("ingesta escuchando en gRPC :{}", server.getPort());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } catch (IOException e) {
                 log.error("no se pudo abrir el puerto gRPC {}: {}", port, e.getMessage());
             }
         });
+    }
+
+    /** Puerto en que escucha, o {@code -1} mientras no haya abierto. */
+    int boundPort() {
+        Server current = server;
+        return current == null ? -1 : current.getPort();
     }
 
     void stop() throws InterruptedException {

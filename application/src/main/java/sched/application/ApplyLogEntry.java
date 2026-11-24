@@ -22,8 +22,8 @@ public final class ApplyLogEntry {
 
     public void execute(CatalogLogEntry entry) throws AppException {
         switch (entry) {
-            case CatalogLogEntry.Snapshot(long seq, var sections) -> {
-                Catalog catalog = Catalog.load(seq, sections);
+            case CatalogLogEntry.Snapshot(long seq, var sections, var courses, var rules) -> {
+                Catalog catalog = Catalog.load(seq, sections, courses, rules);
                 log.info("réplica recargada: seq={} grupos={}", seq, catalog.size());
                 replica.replace(catalog);
             }

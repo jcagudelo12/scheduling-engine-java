@@ -29,10 +29,20 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --no-create-home sched
-COPY --from=builder /app/server/target/sched-server.jar /app/sched-server.jar
+COPY --from=builder /app/server/target/sched-server-exec.jar /app/sched-server.jar
 USER sched
-EXPOSE 8080 50051
-HEALTHCHECK --interval=5s --timeout=2s --retries=3 CMD curl -fsS http://localhost:8080/ready || exit 1
+# 8080: HTTP de los estudiantes; 50051: gRPC de ingesta; 8081: administración y métricas
+# (/actuator/health y /actuator/prometheus, sin token): no debe publicarse fuera de la red interna.
+EXPOSE 8080 8081 50051
+# /ready responde 200 cuando la réplica está al día Y la JVM se calentó (SCHED_WARMUP, 10-60 s con 2 núcleos: ver
+# docs/inicio-rapido.md): --start-period cubre el arranque (~5 s) más ese calentamiento (SCHED_WARMUP_MAX_S, 60 s por
+# defecto). Dentro del periodo los fallos no cuentan como reintentos y el primer 200 la deja "healthy" al instante.
+HEALTHCHECK --interval=5s --timeout=2s --retries=3 --start-period=90s CMD curl -fsS http://localhost:8080/ready || exit 1
 # La JVM usa hasta el 75 % de la memoria asignada al contenedor.
+# Recolector Serial, explícito: una réplica de ~2 núcleos y heap pequeño pierde con G1 (hilos concurrentes, barreras y
+# recolecciones mixtas): -12 % de CPU por solicitud y p99 en estado estable de ~6 ms contra ~18 ms a 4.000/s
+# (bench/results/profile-server.md, "Por qué se desborda la latencia con token"). Con menos de 2 núcleos o menos de
+# 1.792 MB la JVM ya lo elegiría sola; así no depende de los límites del contenedor. Un recolector distinto (-XX:+UseG1GC...) en
+# JAVA_TOOL_OPTIONS choca con este y la JVM no arranca: para cambiarlo, redefina el ENTRYPOINT.
 # Netty (gRPC) carga librerías nativas; Java 22+ pide declararlo para no advertir.
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/sched-server.jar"]
+ENTRYPOINT ["java", "-XX:+UseSerialGC", "-XX:MaxRAMPercentage=75", "--enable-native-access=ALL-UNNAMED", "-jar", "/app/sched-server.jar"]

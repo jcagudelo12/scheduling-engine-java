@@ -1,6 +1,25 @@
 {
   "max_results": 200,
   "catalog_seq": 1,
+  "max_credits": 12,
+  "courses": [
+    {
+      "id": "MAT101",
+      "credits": 4
+    },
+    {
+      "id": "FIS101",
+      "credits": 3
+    },
+    {
+      "id": "PRG101",
+      "credits": 3
+    },
+    {
+      "id": "ING101",
+      "credits": 2
+    }
+  ],
   "students": [
     {
       "id": "est-001",

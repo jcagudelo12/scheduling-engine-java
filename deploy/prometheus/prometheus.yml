@@ -1,0 +1,32 @@
+# Prometheus de desarrollo (perfil "observability" de deploy/docker-compose.yml).
+# Raspa el puerto de administración (SCHED_MANAGEMENT_PORT, 8081) de cada instancia por la red
+# interna de compose: ese puerto no pasa por Traefik, no exige token y no se publica al host.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+scrape_configs:
+  # Los nombres de servicio resuelven a todas las réplicas (docker compose up --scale engine=5).
+  - job_name: sched-engine
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: [engine]
+        type: A
+        port: 8081
+        refresh_interval: 15s
+    relabel_configs:
+      - target_label: role
+        replacement: query
+  - job_name: sched-ingest
+    metrics_path: /actuator/prometheus
+    dns_sd_configs:
+      - names: [ingest]
+        type: A
+        port: 8081
+        refresh_interval: 15s
+    relabel_configs:
+      - target_label: role
+        replacement: ingest

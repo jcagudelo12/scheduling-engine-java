@@ -77,3 +77,9 @@ El diseño detallado está en [sdk.md](../sdk.md).
   motor a cada esquema y exige abrir la base de datos hacia fuera.
 - **Repositorio separado desde el inicio:** obliga a versionar y publicar el contrato antes de
   que esté estable.
+
+## Términos técnicos de este ADR
+
+Este ADR describe una **propuesta**: nada de lo que menciona existe todavía en el código. SQL, JDBC, PostgreSQL y YAML son las piezas con que se **propone** construir el agente. Se explican
+desde cero, con enlaces, en [conceptos-base.md](../conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc);
+el resto del vocabulario, en el [glosario](../glosario.md).

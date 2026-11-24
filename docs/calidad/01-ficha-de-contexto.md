@@ -1,5 +1,7 @@
 # 1. Ficha de contexto
 
+> Términos técnicos (SLO, p99, ADR, SDK, gRPC, NATS…): [conceptos-base.md](../conceptos-base.md) y [glosario](../glosario.md). Índice: [README](README.md).
+
 **Caso:** proyecto motor de planificación de horarios. El cliente es la oficina de Admisiones y
 Registro del ITM, primer usuario del motor, con la visión de que después lo usen otras
 universidades.
@@ -7,6 +9,12 @@ universidades.
 El proyecto incluye el motor, el SDK de integración y el front con el que el estudiante elige
 materias y filtros y ve sus 5 mejores combinaciones. La matrícula sigue haciéndose en el sistema
 académico.
+
+> **Estado de la implementación (2026-11-23).** Esta ficha describe lo que el cliente necesita. El
+> motor ya calcula las *k* mejores combinaciones de forma exacta con ramificación y poda, pero con
+> un solo criterio (las ventanas `avoid`) y con *k* = `SCHED_MAX_COMBINATIONS`, que vale 200 por
+> defecto y 5 en las pruebas de carga. Los demás filtros y criterios siguen pendientes: ver la
+> [nota del ADR 0006](../adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md#nota-de-implementación-2026-11-23).
 
 ## Lo que dice el cliente
 
@@ -84,9 +92,10 @@ Estas decisiones son restricciones del contexto. No se reabren en esta entrega:
 | [0002](../adr/0002-roles-de-la-institucion.md) | La institución empuja los datos; el motor nunca la consulta ni escribe en ella |
 | [0003](../adr/0003-replica-del-catalogo.md) | El motor responde desde una réplica en memoria y marca `stale` cuando puede estar desactualizada |
 | [0005](../adr/0005-varias-instancias-con-historial-compartido.md) | Varias instancias de consulta alimentadas por un historial compartido, con una sola ingesta |
-| [0006](../adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md) | El motor devuelve las 5 mejores combinaciones exactas según los criterios que ordena el estudiante |
+| [0006](../adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md) | El motor devuelve las mejores combinaciones exactas según los criterios que ordena el estudiante (objetivo: 5; hoy `SCHED_MAX_COMBINATIONS`, 200 por defecto, y solo el criterio `avoid`: [nota](../adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md#nota-de-implementación-2026-11-23)) |
 
 El rendimiento del motor ya está medido ([bench/README.md](../../bench/README.md)): p99 de 2,6 ms
-a 4.000 solicitudes/s. El pico del ancla 1 es de unas 45 solicitudes/s, así que **el volumen no es
+a 4.000 solicitudes/s (medido el 2026-10-06 **sin token** y sin calentamiento de la JVM, con 5 combinaciones por respuesta y un catálogo de 5.000 grupos;
+[condiciones de cada cifra](../../bench/README.md#en-qué-condiciones-se-midió-cada-cifra)). El pico del ancla 1 es de unas 45 solicitudes/s, así que **el volumen no es
 una tensión**. Las tensiones están en la frescura de los datos, en el peor caso de una búsqueda y
 en la carga sobre la institución.
