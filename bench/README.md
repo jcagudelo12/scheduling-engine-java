@@ -3,6 +3,59 @@
 Mide cuántas solicitudes de combinaciones atiende el motor y con qué latencia, en
 condiciones controladas y reproducibles.
 
+> **Si es tu primera vez:** *k6* es el programa que genera la carga (miles de solicitudes HTTP por
+> segundo), *JMH* mide funciones sueltas del código, *async-profiler* dice en qué métodos gasta
+> tiempo el motor y los scripts de Python hacen las tablas y gráficas. Cada uno está explicado en
+> [conceptos-base.md](../docs/conceptos-base.md#medición-de-rendimiento). Para correr el motor,
+> no necesitas nada de esta carpeta.
+
+## Qué necesitas
+
+| Herramienta | Para qué | Cómo instalarla |
+|---|---|---|
+| Docker 24+ con Compose v2 | Levantar el motor, NATS y Traefik, y correr k6 en un contenedor | [Instalar Docker](https://docs.docker.com/engine/install/). Sin `sudo` (ver el [README](../README.md#requisitos-previos)) |
+| Java 25 | Compilar y correr el motor y los microbenchmarks | `java -version` |
+| Python 3 (probado con 3.14) | Generar los datos y las gráficas | `python3 -m venv bench/.venv && bench/.venv/bin/pip install -r bench/requirements.txt` instala `matplotlib` (gráficas) y `cryptography` (firma los tokens de `profile-tokens.py`) |
+| k6 | Ya viene en un contenedor (`grafana/k6`): no hace falta instalarlo | |
+| async-profiler 4.x | Solo para `profile-server.sh` y `overflow-run.sh` con `COLD_PROF=1` | Ver [Instalar async-profiler](#instalar-async-profiler) |
+| Linux con `taskset` | Fijar el motor a núcleos concretos (`bench/*.sh` fuera de Docker) | Viene en el paquete `util-linux`. En macOS y Windows no existe: las corridas con núcleos fijos solo se hacen en Linux |
+
+### Instalar async-profiler
+
+[async-profiler](https://github.com/async-profiler/async-profiler) es un perfilador de bajo costo
+para la JVM. Los scripts lo buscan en `$ASPROF_DIR/bin/asprof` y `$ASPROF_DIR/bin/jfrconv`
+(por defecto `/usr/lib/jvm/java-25-amazon-corretto`).
+
+- **Con Amazon Corretto 25** ya viene incluido en la carpeta `bin/` del JDK: no hay que instalar
+  nada. Comprueba con `ls $JAVA_HOME/bin/asprof`.
+- **Con otro JDK**: descarga el `.tar.gz` de la versión 4.x desde sus
+  [releases](https://github.com/async-profiler/async-profiler/releases), descomprímelo y apunta
+  `ASPROF_DIR` a esa carpeta (debe tener `bin/asprof` y `bin/jfrconv`):
+  `ASPROF_DIR=$HOME/async-profiler-4.5-linux-x64 bench/profile-server.sh`.
+- Si `cat /proc/sys/kernel/perf_event_paranoid` da más de 1, el perfilador no puede usar los
+  contadores del procesador: usa `-e ctimer` (un temporizador por hilo, sin permisos especiales),
+  que es lo que se usó en [`profile-server.md`](results/profile-server.md).
+
+### Ajustar los núcleos a tu máquina
+
+Para que los resultados sean comparables, cada pieza corre en núcleos fijos (`taskset` o
+`--cpuset-cpus`). Los valores por defecto son los de un Ryzen 7 2700 (16 hilos) y **no sirven tal cual
+en otra máquina**: si tu procesador tiene menos hilos, los scripts fallarán o compartirán núcleos.
+Cámbialos con variables de entorno:
+
+| Variable | Por defecto | Qué fija |
+|---|---|---|
+| `ENGINE_CPUS` | `4,6` | Núcleos del motor (la JVM los ve como 2 CPUs) |
+| `NATS_CPUS` | `2,3` en `run.sh`; `5,7` en el resto | Núcleos de NATS (y de la ingesta en el pico) |
+| `K6_CPUS` | `8-15` | Núcleos del generador de carga |
+
+Pasos: (1) mira tus hilos con `lscpu -e` o `nproc`; (2) en procesadores con hiperhilos, cada núcleo
+físico aparece como dos números (`lscpu -e` los agrupa en la columna `CORE`): para el motor elige un
+solo hilo de cada núcleo físico y deja libres sus hermanos; (3) reparte sin solaparlos, por ejemplo
+en una máquina de 8 hilos: `ENGINE_CPUS=2,3 NATS_CPUS=1 K6_CPUS=4-7 bench/run.sh`. Si no tienes
+núcleos de sobra, los números sirven para comparar entre sí corridas de tu propia máquina, no con los
+de este reporte.
+
 ## Cómo correrla
 
 ```sh
@@ -14,7 +67,7 @@ REPS=5 RATES="1000 2000" DURATION=60s bench/run.sh
 MAX_COMBINATIONS=50 OUT=bench/results-50 bench/run.sh   # otra variante, en otra carpeta
 ```
 
-Requiere Docker, Java 25 y Python 3. El script construye la imagen, carga el catálogo con el
+Requiere Docker, Java 25 y Python 3 (ver [Qué necesitas](#qué-necesitas)). El script construye la imagen, carga el catálogo con el
 simulador de institución y deja el reporte en `results/report.md` y las gráficas en
 `results/*.png` (versión clara y oscura).
 
@@ -30,7 +83,9 @@ El motor calienta la JVM antes de responder `200` en `/ready` (`SCHED_WARMUP=on`
 
 ## Prueba del pico de matrícula (E1, E2 y ADR 0009)
 
-Simula la apertura de una ventana de matrícula, no una tasa constante: la tasa de llegada sube
+Mide los escenarios [E1](../docs/calidad/04-escenarios.md#e1-un-grupo-recomendado-se-llena-durante-el-pico)
+(un grupo se llena durante el pico) y [E2](../docs/calidad/04-escenarios.md#e2-una-búsqueda-que-explota)
+(latencia acotada) de la carpeta de calidad. Simula la apertura de una ventana de matrícula, no una tasa constante: la tasa de llegada sube
 en rampa hasta el pico, se mantiene (meseta), y baja. Se mide solo la meseta.
 
 ```sh
@@ -77,10 +132,30 @@ ventanas `avoid` de jornada. Con `avoid` la búsqueda es exacta (recorre todo el
 puede agotar `SCHED_SEARCH_TIMEOUT_MS`. Sin ráfaga ni `/alternatives`; tasas más bajas (50, 100 y 200 por
 segundo). Con `SEARCH_TIMEOUT_MS=0` se mide la misma carga sin límite, como referencia.
 
-Resultado resumido (2026-11-22): una réplica de 2 CPUs sostiene ~5.000 solicitudes/s con p99 de 3 ms, tres réplicas 8.000/s con p99 de 15 ms (más allá limitan k6 y Traefik de esta máquina); E1 y E2 se cumplen y no hubo respuestas cortadas por el tiempo (0 %), ni en el peor caso 7x8.
+Resultado resumido (2026-11-22, **sin token y con la JVM fría**, perfil `itm`, 5 combinaciones): una réplica de 2 CPUs sostiene ~5.000 solicitudes/s con p99 de 3 ms, tres réplicas 8.000/s con p99 de 15 ms (más allá limitan k6 y Traefik de esta máquina); E1 y E2 se cumplen y no hubo respuestas cortadas por el tiempo (0 %), ni en el peor caso 7x8.
 
 Los datos crudos (`bench/results/pico_*`, `worst_*`) están en `.gitignore`: solo se versionan los resúmenes,
 en [`results/report-pico.md`](results/report-pico.md).
+
+## En qué condiciones se midió cada cifra
+
+Las cifras de rendimiento que aparecen en este repositorio **no son comparables entre sí** si no se
+mira esta tabla: cambian el token, el calentamiento de la JVM, los datos y el número de combinaciones.
+Todas se midieron en el mismo equipo (Ryzen 7 2700, 30 GB, Linux) con **1 réplica de 2 núcleos y 1 GB**,
+salvo que se diga otra cosa.
+
+| Cifra | Token | Calentamiento de la JVM | Catálogo | Combinaciones por respuesta | Fecha | Dónde |
+|---|---|---|---|---|---|---|
+| p99 < 3 ms hasta 4.000/s; arranque 4,26 s; 147 MB | **Sin** token ni TLS | **No** (`SCHED_WARMUP=off`; mide también la primera solicitud en frío) | 5.000 grupos de 1.000 cursos, 50.000 estudiantes, solo `/combinations` | 5 (`MAX_COMBINATIONS`; el motor trae 200 por defecto) | 2026-10-06 | [Resultados](#resultados-2026-10-06), [`report.md`](results/report.md) |
+| ~5.000/s con p99 de 3 ms (1 réplica); 8.000/s con p99 de 15 ms (3 réplicas) | **Sin** token ni TLS | **No** existía todavía (arranque en frío) | Perfil `itm`: 3.475 grupos, 29.755 estudiantes, 80 % `/combinations` y 20 % `/alternatives` | 5 | 2026-11-22 | [`report-pico.md`](results/report-pico.md) |
+| 4.000-4.500/s con p99 de ~12-19 ms | **Con** token (EdDSA) | **Sí**: réplica ya caliente (la fase fría se descarta) | Perfil `itm` | 5 | 2026-11-22 | [`profile-server.md`](results/profile-server.md#5-tasa-sostenible-en-estado-estable-con-token) |
+| ~2.500/s sin desbordarse | **Con** token | **No**: JVM recién arrancada y pico abrupto | Perfil `itm` | 5 | 2026-11-22 | [`profile-server.md`](results/profile-server.md#por-qué-se-desborda-la-latencia-con-token) |
+| Primeros 30 s: p99 de 12-18 ms (con) frente a 0,6-3,4 s (sin) a 3.500/s | **Con** token | **Con** y **sin**, alternadas | Perfil `itm` | 5 | 2026-11-23 | [`warmup.md`](results/warmup.md) |
+
+Cómo leerlo: sin token el motor hace menos trabajo por solicitud (no verifica la firma, unos 105 µs
+de CPU), así que aguanta más. El calentamiento no cambia el rendimiento en estado estable, cambia
+cómo se comporta la réplica en sus primeros 30 segundos. Y el valor de 5 combinaciones es el de las
+pruebas, no el del motor (`SCHED_MAX_COMBINATIONS=200`).
 
 ## Cómo se garantizan condiciones controladas
 
@@ -97,15 +172,15 @@ en [`results/report-pico.md`](results/report-pico.md).
 | Variación | 3 repeticiones; se reporta la **mediana** y el rango del p99 |
 | Colas vacías entre tasas | Pausa de 5 s entre una tasa y la siguiente |
 | Entorno registrado | Fecha, CPU, kernel, modo de frecuencia, versiones e ID de la imagen, carga del sistema antes de cada repetición |
-| Combinaciones por respuesta | Hasta 5 por defecto (`MAX_COMBINATIONS`), lo que verá el estudiante |
+| Combinaciones por respuesta | Hasta 5 por defecto **de la prueba** (`MAX_COMBINATIONS`, que se pasa al motor como `SCHED_MAX_COMBINATIONS`); lo que verá el estudiante. El motor, sin configurar, devuelve hasta 200 |
 
 Antes de medir: cerrar programas pesados y, si es posible, poner el procesador en modo
 `performance` (`sudo cpupower frequency-set -g performance`); el modo usado queda en el reporte.
 
-## Resultados (06-10-2026)
+## Resultados (2026-10-06)
 
-Mediana de 3 repeticiones, motor con 2 CPUs y 1 GB, hasta 5 combinaciones por respuesta,
-catálogo de 5.000 grupos. Reporte completo, con el entorno, en [`results/report.md`](results/report.md).
+Mediana de 3 repeticiones, motor con 2 CPUs y 1 GB, **sin token ni TLS y sin calentamiento de la JVM**,
+hasta 5 combinaciones por respuesta, catálogo de 5.000 grupos (no es el perfil `itm` de la prueba del pico). Reporte completo, con el entorno, en [`results/report.md`](results/report.md).
 
 ### Arranque y memoria
 
@@ -172,4 +247,6 @@ java -jar benchmarks/target/benchmarks.jar SolverComparisonBenchmark
 
 - El generador de carga corre en la misma máquina que el motor, aunque en núcleos separados.
 - El procesador estaba en modo `schedutil` (frecuencia variable), no en `performance`.
-- Configuración por defecto de Spring Boot y de la JVM, sin afinar.
+- Configuración por defecto de Spring Boot y de la JVM, sin afinar (desde 2026-11-22 la imagen fija
+  `-XX:+UseSerialGC` de forma explícita; los perfiles de `profile-server.md` se hicieron en el host con G1 y por eso
+  lo comparan con Serial).

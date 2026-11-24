@@ -1,5 +1,7 @@
 # Experimento pareado: cómo reproducirlo
 
+> **Términos.** Semilla, perfil, calibración, sensibilidad, H0, alfa, Shapiro-Wilk, Wilcoxon y bootstrap están explicados a nivel intuitivo en [conceptos-base.md](../../docs/conceptos-base.md#estadística-del-simulador-a-nivel-intuitivo) y en el [glosario](../../docs/glosario.md#simulación-y-estadística). Comandos: [simulador.md](../../docs/simulador.md).
+
 Todo se corre con el jar del módulo `simulation` y la semilla fija 42. Cada paso es un solo comando
 desde la raíz del repositorio.
 

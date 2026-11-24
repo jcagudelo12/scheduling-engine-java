@@ -1,5 +1,7 @@
 # Simulador e institución simulada
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [gRPC](conceptos-base.md#grpc-y-protocol-buffers) (llamadas remotas entre programas con mensajes binarios); [TLS/mTLS](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (conexión cifrada; en mTLS el servidor también exige certificado al cliente); [CA](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (autoridad que firma certificados); [JWT/Bearer](conceptos-base.md#jwt-y-bearer) (token firmado enviado en `Authorization: Bearer`); [EdDSA/Ed25519](conceptos-base.md#firma-eddsa-ed25519-y-llaves-pública-y-privada) (algoritmo de firma con llave pública y privada); [kid](conceptos-base.md#kid-el-identificador-de-la-llave) (nombre de la llave con que se firmó el token); [NATS/JetStream](conceptos-base.md#nats-y-jetstream) (mensajería que guarda en orden el historial del catálogo); [ADR](conceptos-base.md#adr-decisiones-de-arquitectura) (registro de una decisión de arquitectura); [SDK](conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc) (agente que cada universidad instalaría para enviar su catálogo; todavía no existe); [p99/SLO](conceptos-base.md#prometheus-micrometer-y-métricas) (p99 es el valor bajo el cual está el 99 % de las mediciones; SLO es la meta de calidad fijada); [k6](conceptos-base.md#k6) (generador de carga HTTP); [Shapiro-Wilk/Wilcoxon/bootstrap/H0](conceptos-base.md#estadística-del-simulador-a-nivel-intuitivo) (pruebas y técnicas estadísticas del experimento).
+
 El módulo [`simulation`](../simulation/) tiene tres herramientas en un solo jar:
 
 - **Simulador de escenarios** (`simulate`): corre un escenario completo en memoria, sin red ni
@@ -7,12 +9,19 @@ El módulo [`simulation`](../simulation/) tiene tres herramientas en un solo jar
 - **Institución simulada** (`load`, `seats`): habla con un motor real por el
   [contrato gRPC](contrato-institucion.md), como lo hará el [SDK](sdk.md). Sirve para cargar
   datos y provocar cambios en un despliegue.
+- **Ráfaga de cupos** (`seat-storm`): vacía muchos grupos a ritmo fijo contra un motor real, para
+  medir cuánto tarda el motor en dejar de ofrecer un grupo lleno (escenario E1). La usan las
+  pruebas de carga de [`bench/`](../bench/README.md).
 - **Experimento pareado** (`experiment`): simula una matrícula con muchos estudiantes sintéticos
   que compiten por los cupos, en dos condiciones (reactiva y asistida por el motor). Ver
   [Experimento pareado](#experimento-pareado-reactivo-frente-a-asistido).
 - **Calibración y sensibilidad** (`calibrate`, `sensitivity`): ajustan el flujo A a la consulta y
   prueban cuánto resiste la conclusión a los supuestos. Ver [Calibración](#calibración) y
   [Sensibilidad](#sensibilidad).
+- **Análisis estadístico** (`analyze`): aplica las pruebas de hipótesis al CSV que dejó el
+  experimento. Ver [Análisis estadístico](#análisis-estadístico). Los conceptos (H0, alfa,
+  Shapiro-Wilk, Wilcoxon…) están explicados desde cero en
+  [conceptos-base.md](conceptos-base.md#estadística-del-simulador-a-nivel-intuitivo).
 
 ## Comandos
 
@@ -22,8 +31,10 @@ Con Java (después de `./mvnw verify` o `./mvnw -q -pl simulation -am package -D
 java -jar simulation/target/sched-simulation.jar simulate [escenario.json]
 java -jar simulation/target/sched-simulation.jar load     [escenario.json] [seq]
 java -jar simulation/target/sched-simulation.jar seats    <seq> <grupo> <cupos>
+java -jar simulation/target/sched-simulation.jar seat-storm --rate <n> --duration <s> --sections <archivo> [--seq 2] [--start-at <epoch ms>]
 java -jar simulation/target/sched-simulation.jar demo-catalog --out <escenario.json> [--seed n]
 java -jar simulation/target/sched-simulation.jar experiment --config <json> --out <dir> [--seed n] [--profiles n]
+java -jar simulation/target/sched-simulation.jar analyze --results <results.csv> [--out <dir>] [--alpha 0.05] [--mu0 0.20] [--seed n]
 java -jar simulation/target/sched-simulation.jar calibration --results <results.csv> [--calibration <json>]
 java -jar simulation/target/sched-simulation.jar calibrate --config <json> --out <dir> [--budget n] [--profiles n] [--seed n]
 java -jar simulation/target/sched-simulation.jar sensitivity --config <json> --out <dir> [--profiles n] [--replications r]
@@ -38,10 +49,12 @@ docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01
 
 | Comando | Qué hace | Salida |
 |---|---|---|
-| `simulate` | Carga el escenario en un historial en memoria y calcula las combinaciones de cada estudiante | Tabla con combinaciones y tiempo por estudiante |
+| `simulate` | Carga el escenario en un historial en memoria y calcula las combinaciones de cada estudiante. **Usa siempre `BacktrackingSolver`** (la línea base), no el `forward-checking` que usa el motor por defecto ([`Simulation.java`](../simulation/src/main/java/sched/simulation/Simulation.java)): sirve para ver el resultado, no para medir el rendimiento del motor real. Sin tiempo máximo ni `avoid` | Tabla con combinaciones y tiempo por estudiante |
 | `load` | Envía los grupos del escenario con `LoadCatalog`. Si no se indica `seq`, usa `catalog_seq` del escenario | `catálogo cargado: seq=1 grupos=7` |
 | `seats` | Envía un `seats_changed` con `SyncChanges` y cierra la conexión | `respuesta del motor: ack seq=2` (o `resync_required` / `rejected`) |
 | `demo-catalog` | `--out <escenario.json> [--seed n]`: exporta una oferta sintética estilo ITM (la del [experimento](#oferta-sintética-estilo-itm)) en el formato de escenario, con créditos y `max_credits`, para cargarla con `load` y probar el [cliente web](inicio-rapido.md#cliente-de-demostración) | Resumen y un estudiante de ejemplo con sus asignaturas |
+| `seat-storm` | Abre una conexión de cambios y vacía (`available = 0`) los grupos del archivo `--sections` (uno por línea), a `--rate` grupos por segundo durante `--duration` segundos; el evento `i` sale en `inicio + i / rate` y los `seq` empiezan en `--seq` (2 por defecto). `--start-at` fija el inicio en milisegundos desde 1970 para alinearlo con otro proceso (k6). Acepta las opciones de [TLS](#tls-con-autenticación-mutua) | `seat-storm: enviados=… acks=… sin_ack=… retraso_max_ms=… ack_p50_ms=… ack_p99_ms=…` (el retraso de confirmación del motor) |
+| `analyze` | `--results <csv>` es el `results.csv` de `experiment`; `--out` (por defecto, la carpeta del CSV); `--alpha` (0,05) es el nivel de significancia; `--mu0` (0,20) es la reducción del tiempo que se quiere superar; `--seed` fija el bootstrap. Termina con código 3 si Rtraslape en B no es 0 en todos los perfiles | Resumen en consola y `analysis.md` + `analysis.json` |
 | `keygen` | Genera un par de llaves Ed25519 para firmar tokens de prueba | `<kid>.key` (privada) y `<kid>.pem` (pública) |
 | `token` | Imprime un token firmado para `Authorization: Bearer` | El JWT |
 
@@ -86,6 +99,24 @@ java -jar simulation/target/sched-simulation.jar token --key /tmp/sched-keys/dev
 
 Son herramientas de **desarrollo**: la llave privada vive en un archivo local. En producción
 firma la institución con su propia llave.
+
+### Ráfaga de cupos (`seat-storm`)
+
+Simula el momento en que muchos grupos se llenan casi a la vez, que es lo que ocurre al abrir una
+matrícula. Contra el motor de desarrollo sin TLS (camino C de [inicio-rapido.md](inicio-rapido.md)):
+
+```sh
+printf 'MAT101-01\nFIS101-02\n' > /tmp/llenos.txt            # un grupo por línea
+java -jar simulation/target/sched-simulation.jar load --plaintext      # deja el catálogo en seq=1
+java -jar simulation/target/sched-simulation.jar seat-storm --rate 2 --duration 1 \
+    --sections /tmp/llenos.txt --plaintext
+#   seat-storm: enviados=2 acks=2 sin_ack=0 retraso_max_ms=… ack_p50_ms=… ack_p99_ms=…
+```
+
+`--seq` debe ser el siguiente al último que recibió el motor (tras un `load` con `seq=1`, el 2, que es
+el valor por defecto); si no, el motor responde `resync_required`. Al terminar, la conexión de cambios se cierra y las respuestas del motor llevan `stale: true`, igual que con `seats`. Los números `ack_p50_ms` y
+`ack_p99_ms` son cuánto tardó el motor en confirmar cada cambio. La prueba de carga del pico la lanza
+junto con k6 ([`bench/run-pico.sh`](../bench/README.md#prueba-del-pico-de-matrícula-e1-e2-y-adr-0009)).
 
 ### Una sesión típica
 
