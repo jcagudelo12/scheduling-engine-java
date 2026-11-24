@@ -1,7 +1,13 @@
 # 2. Supuestos declarados
 
+> Términos técnicos (SLO, p99, ADR, SDK, gRPC, NATS…): [conceptos-base.md](../conceptos-base.md) y [glosario](../glosario.md). Índice: [README](README.md).
+
 Lo que el cliente no dijo y decidimos asumir. Cada supuesto cambia un número o un atributo, e
 indica qué escenarios dependen de él y qué pasaría si el cliente respondiera lo contrario.
+
+Los escenarios E1 a E5 están en [04-escenarios.md](04-escenarios.md): E1 un grupo se llena durante
+el pico, E2 una búsqueda que explota, E3 el SDK detecta cambios sin cargar la base, E4 efecto
+manada y E5 el motor no responde a tiempo.
 
 | # | Supuesto | Razón | Pregunta para confirmarlo | Si fuera falso | Escenarios |
 |---|---|---|---|---|---|

@@ -1,5 +1,7 @@
 # 3. Priorización con presupuesto de puntos
 
+> Términos técnicos (SLO, p99, ADR, SDK, gRPC, NATS…): [conceptos-base.md](../conceptos-base.md) y [glosario](../glosario.md). Índice: [README](README.md).
+
 18 puntos repartidos entre las 8 características de ISO/IEC 25010, de 1 a 5 cada una. Con el
 mínimo de 1 por atributo, quedan 10 puntos libres.
 

@@ -1,11 +1,16 @@
 # Atributos de calidad
 
+> **Términos técnicos.** SLO (la meta medible de un atributo de calidad), p99 (el valor bajo el cual está el 99 % de las mediciones), ADR, SDK, gRPC y NATS están explicados en [conceptos-base.md](../conceptos-base.md); el vocabulario del dominio, en el [glosario](../glosario.md).
+
 Análisis de calidad del motor: qué calidad necesita, dónde están las tensiones y qué decisiones
 quedan por tomar. Corresponde a la entrega del Bloque 2 del curso de arquitectura, sobre el
 proyecto propio.
 
 Se omite lo que no genera tensión: autorización, roles, facilidad de aprendizaje y el
 rendimiento con carga normal, que ya está medido en [bench/](../../bench/README.md).
+
+Los escenarios se nombran **E1 a E5** en todo el repositorio; el detalle de cada uno está en
+[04-escenarios.md](04-escenarios.md).
 
 | Paso | Documento | Contenido |
 |---|---|---|

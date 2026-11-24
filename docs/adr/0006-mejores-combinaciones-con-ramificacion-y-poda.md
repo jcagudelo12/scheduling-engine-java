@@ -1,6 +1,6 @@
 # 0006. Devolver las 5 mejores combinaciones con ramificación y poda y filtros del estudiante
 
-- **Estado:** Aceptado (implementación pendiente)
+- **Estado:** Aceptado (implementación parcial: ver la [nota del 2026-11-23](#nota-de-implementación-2026-11-23))
 - **Fecha:** 2026-09-29
 
 ## Contexto
@@ -81,3 +81,32 @@ siempre respetando el mínimo de créditos. La respuesta indica qué materia se 
   explicar; el orden por importancia cubre el caso de uso.
 - **Elegir un subconjunto de materias según el rango de créditos:** descartado por decisión
   del producto; el estudiante elige exactamente qué materias quiere ver.
+
+## Nota de implementación (2026-11-23)
+
+La decisión no se cambia; esto solo dice qué parte ya existe en el código.
+
+**Ya implementado**
+
+- **Ramificación y poda exacta con costo.** `ForwardCheckingSolver` (el solver por defecto) mantiene
+  en un *heap* las mejores combinaciones y poda con la cota "costo parcial + menor costo posible de
+  cada curso pendiente". Sin costo se detiene al reunir las primeras. El resultado con costo es
+  exacto, salvo que venza el [tiempo máximo](0009-tiempo-maximo-de-la-busqueda.md) (`complete=false`).
+- **Un criterio de "mejor":** la penalización por las ventanas `avoid` del estudiante (restricción
+  suave). Las alternativas usan un costo distinto: primero cuántos grupos cambian y luego la
+  penalización.
+- **El valor de k es configurable:** `SCHED_MAX_COMBINATIONS`. **Por defecto es 200**, no 5; las
+  pruebas de carga de `bench/` lo fijan en 5, que es lo que vería el estudiante. Las alternativas
+  usan `SCHED_MAX_ALTERNATIVES` (por defecto 5).
+- Créditos por curso en el catálogo y tope de créditos del periodo: si los cursos pedidos lo superan, no
+  se busca y la API responde `422`.
+
+**Pendiente**
+
+- Los filtros estrictos del estudiante: jornada o franjas, mínimo de créditos, días libres, máximo
+  de horas por día y sede (el catálogo todavía no trae la sede de cada grupo).
+- Los criterios ordenados por el estudiante (huecos, días con clase, cupo, cambios de sede) y la
+  prioridad por materia.
+- Cambiar el valor por defecto a 5 cuando existan los criterios anteriores (hoy el portal tendría
+  que pedir solo las primeras 5 de las 200).
+
