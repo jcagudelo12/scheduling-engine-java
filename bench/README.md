@@ -18,6 +18,16 @@ Requiere Docker, Java 25 y Python 3. El script construye la imagen, carga el cat
 simulador de institución y deja el reporte en `results/report.md` y las gráficas en
 `results/*.png` (versión clara y oscura).
 
+## Arranque en frío con y sin calentamiento
+
+```sh
+RATE=3500 REPS=3 WORK=/tmp/warmup-3500 bench/warmup-compare.sh   # SCHED_WARMUP=off contra on, alternadas; ver results/warmup.md
+```
+
+El motor calienta la JVM antes de responder `200` en `/ready` (`SCHED_WARMUP=on`, por defecto). Por eso `bench/docker-compose.pico.yml` ya arranca las réplicas calientes
+(su `healthcheck` espera a `/ready`; `SCHED_WARMUP=off bench/run-pico.sh` reproduce el arranque en frío de `results/report-pico.md`) y `bench/docker-compose.yml`
+(`run.sh`, que mide también las primeras solicitudes en frío) lo deja apagado. Resultados y método: [`results/warmup.md`](results/warmup.md).
+
 ## Prueba del pico de matrícula (E1, E2 y ADR 0009)
 
 Simula la apertura de una ventana de matrícula, no una tasa constante: la tasa de llegada sube

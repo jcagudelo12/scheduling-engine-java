@@ -82,6 +82,9 @@ const sliceThresholds = {};
 if (SLICE_S > 0) {
   for (let n = 0; n <= Math.ceil((RAMP + HOLD + DOWN) / SLICE_S); n++) {
     sliceThresholds['http_req_duration{slice:' + n + '}'] = ['p(99)>=0'];
+    // Errores (no 200/422) y solicitudes completadas por tramo: bench/warmup-summary.py.
+    sliceThresholds['http_req_failed{slice:' + n + '}'] = ['rate>=0'];
+    sliceThresholds['http_reqs{slice:' + n + '}'] = ['count>=0'];
   }
 }
 

@@ -23,6 +23,10 @@ x-engine: &engine
     SCHED_NATS_URL: nats://nats:4222
     SCHED_AUTH: none
     SCHED_MAX_COMBINATIONS: ${MAX_COMBINATIONS:-5}
+    # Calentamiento de la JVM antes de /ready (por defecto del motor: on). El healthcheck de la imagen espera a /ready, así que
+    # bench/run-pico.sh empieza la carga con la réplica ya caliente; SCHED_WARMUP=off bench/run-pico.sh reproduce el arranque en
+    # frío de report-pico.md (medido antes del calentamiento). Ver bench/results/warmup.md.
+    SCHED_WARMUP: ${SCHED_WARMUP:-on}
     SCHED_SEARCH_TIMEOUT_MS: ${SEARCH_TIMEOUT_MS:-150}
     LOGGING_LEVEL_ROOT: warn
     LOGGING_LEVEL_SCHED_SERVER: info

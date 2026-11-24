@@ -7,6 +7,10 @@
 #   MODE=worst bench/run-pico.sh                         # peor caso 7x8 con SCHED_SEARCH_TIMEOUT_MS=150
 #   DIRECT=1 PREFIX=directo STEPS="1:8000" bench/run-pico.sh   # k6 contra la réplica, sin pasar por Traefik
 #
+# El motor calienta la JVM antes de que /ready responda 200 (SCHED_WARMUP=on por defecto, ver bench/results/warmup.md) y el paso espera a
+# que las réplicas estén "healthy" (healthcheck = /ready): la carga empieza con la réplica caliente. `SCHED_WARMUP=off bench/run-pico.sh`
+# reproduce el arranque en frío de bench/results/report-pico.md (medido antes del calentamiento).
+#
 # Cada paso levanta todo de cero (NATS vacío, motores recién iniciados, catálogo `--profile itm`),
 # con cada réplica en núcleos fijos. Resultados crudos: bench/results/<prefijo>_*.{json,txt}
 # (ignorados por git). Resumen: python3 bench/report_pico.py <prefijo>... (ver bench/README.md).

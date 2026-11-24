@@ -26,6 +26,10 @@ services:
       SCHED_AUTH: none
       SCHED_GRPC_TLS: disabled
       SCHED_MAX_COMBINATIONS: ${MAX_COMBINATIONS:-5}
+      # Esta prueba (bench/run.sh) mide también las primeras solicitudes EN FRÍO (fila "200 (en frío)" del reporte) y no espera a
+      # /ready: con el calentamiento el motor competiría consigo mismo y la fila dejaría de medir lo que dice. Por eso va apagado;
+      # SCHED_WARMUP=on bench/run.sh lo activa (el motor ya no estaría frío al empezar). Ver bench/results/warmup.md.
+      SCHED_WARMUP: ${SCHED_WARMUP:-off}
       LOGGING_LEVEL_ROOT: warn
       LOGGING_LEVEL_SCHED_SERVER: info
     ports:

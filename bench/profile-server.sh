@@ -76,6 +76,9 @@ done
 
 engine_env=(SCHED_ROLE=query SCHED_NATS_URL=nats://127.0.0.1:4222 SCHED_MAX_COMBINATIONS=5 SCHED_SEARCH_TIMEOUT_MS=150
   LOGGING_LEVEL_ROOT=warn LOGGING_LEVEL_SCHED_SERVER=info)
+# Variables extra del motor (VAR=valor VAR=valor), p. ej. ENGINE_ENV="SCHED_WARMUP=off".
+# shellcheck disable=SC2206
+engine_env+=(${ENGINE_ENV:-})
 k6_env=()
 if [ "$AUTH" = jwt ]; then
   echo "==> Llaves y tokens JWT (fuera del repo, en $WORK/jwt)"
@@ -94,6 +97,8 @@ echo "==> Motor (núcleos $ENGINE_CPUS, heap $ENGINE_HEAP, auth=$AUTH)"
 env "${engine_env[@]}" taskset -c "$ENGINE_CPUS" java -Xmx"$ENGINE_HEAP" -XX:+UnlockDiagnosticVMOptions -XX:+DebugNonSafepoints $ENGINE_OPTS \
   --enable-native-access=ALL-UNNAMED -jar "$ENGINE" > "$WORK/engine.log" 2>&1 &
 engine=$!; pids+=($engine)
+# /ready tarda ahora el calentamiento de la JVM (SCHED_WARMUP, hasta SCHED_WARMUP_MAX_S = 60 s; SCHED_WARMUP=off en ENGINE_ENV
+# lo desactiva para repetir el arranque en frío de profile-server.md): el motor ya está caliente cuando empieza la carga.
 wait_until "motor listo" bash -c 'curl -fs localhost:8080/ready'
 sleep 3
 

@@ -11,6 +11,10 @@
 # ENGINE_CPUS, NATS_CPUS, STORM_CPUS, K6_CPUS, ENGINE_HEAP, ENGINE_OPTS (flags de JVM extra), ENGINE_ENV (VAR=valor VAR=valor),
 # PROBE=1 (sonda independiente de k6, PROBE_RATE/PROBE_CPUS), STORM_RATE (0 = sin ráfaga de cupos), JFR=1 (graba JFR con GC, hilos virtuales y safepoints), POLL=1 (sondea el planificador
 # de hilos virtuales con jcmd y la cola de aceptación), SKIP_BUILD=1.
+# Arranque en frío con y sin calentamiento (bench/results/warmup.md): READY_SLEEP=0 BOOT=2 (el tráfico empieza apenas /ready = 200),
+# ENGINE_ENV="SCHED_WARMUP=off" o "SCHED_WARMUP=on", ENGINE_OPTS=-XX:+UseSerialGC. Además de summary.json deja ready_s (arranque del
+# proceso hasta /ready = 200), loadavg.txt (uptime antes y después) y jit_series.txt (CPU acumulada de cada hilo del JIT
+# cada 0,5 s desde el arranque), que resume bench/warmup-summary.py.
 # Salida en $WORK: summary.json (lo que escribe bench/overflow-summary.py), k6.json, y los datos crudos de la ventana.
 # Todo se detiene al terminar. Requiere lo mismo que profile-server.sh.
 set -euo pipefail
@@ -31,6 +35,7 @@ K6_CPUS=${K6_CPUS:-8-15}
 ENGINE_HEAP=${ENGINE_HEAP:-768m}
 ENGINE_OPTS=${ENGINE_OPTS:-}
 ENGINE_ENV=${ENGINE_ENV:-}
+READY_SLEEP=${READY_SLEEP:-3}             # segundos de espera tras /ready = 200 antes de programar la rampa
 JFR=${JFR:-0}
 PROBE=${PROBE:-0}                         # 1 = sonda de latencia independiente de k6 (bench/LatencyProbe.java)
 PROBE_RATE=${PROBE_RATE:-200}
@@ -91,19 +96,39 @@ jfr_opts=()
 if [ "$JFR" = 1 ]; then
   jfr_opts=("-XX:StartFlightRecording=filename=$WORK/engine.jfr,settings=profile,dumponexit=true,jdk.VirtualThreadPinned#threshold=0ms,jdk.SafepointBegin#threshold=0ms,jdk.GCPhasePause#threshold=0ms")
 fi
+uptime > "$WORK/loadavg.txt"
+engine_start_ms=$(date +%s%3N)
 # shellcheck disable=SC2086
 env "${engine_env[@]}" taskset -c "$ENGINE_CPUS" java -Xmx"$ENGINE_HEAP" $ENGINE_OPTS "${jfr_opts[@]}" \
   --enable-native-access=ALL-UNNAMED -jar "$ENGINE" > "$WORK/engine.log" 2>&1 &
 engine=$!; pids+=($engine)
+# CPU acumulada (ticks) de CADA hilo del compilador (JIT), cada 0,5 s desde el arranque: la fase fría se ve en el tiempo. Va por hilo
+# (tid:ticks) porque la JVM crea y retira hilos del compilador según la cola (UseDynamicNumberOfCompilerThreads): sumar solo los vivos
+# haría bajar la cifra cuando uno termina. bench/warmup-summary.py conserva el último valor de cada hilo.
+( while kill -0 "$engine" 2>/dev/null; do
+    awk -v ts="$(date +%s%3N)" 'BEGIN { printf "%s", ts }
+      { tid = $0; sub(/ .*/, "", tid); j = $0; sub(/^[0-9]+ \(/, "", j); name = j; sub(/\).*/, "", name); sub(/^.*\) /, "", j); split(j, f, " ");
+        if (name ~ /^(C1|C2) Comp/ || name ~ /Compile/) printf " %s:%d", tid, f[12] + f[13] }
+      END { print "" }' /proc/$engine/task/*/stat 2>/dev/null
+    sleep 0.5
+  done > "$WORK/jit_series.txt" ) &
+pids+=($!)
 wait_until "motor listo" bash -c 'curl -fs localhost:8080/ready'
-sleep 3
+ready_ms=$(date +%s%3N)
+echo $(( ready_ms - engine_start_ms )) > "$WORK/ready_ms.txt"
+sleep "$READY_SLEEP"
 # La primera lectura de /actuator/prometheus es lenta (clases y formato en frío) y frena a la réplica unos segundos:
 # se hace antes de la carga para no medirla por error (en producción Prometheus ya la ha leído muchas veces).
-[ "${PRESCRAPE:-1}" = 1 ] && { curl -s localhost:8081/actuator/prometheus >/dev/null; curl -s localhost:8081/actuator/prometheus >/dev/null; }
+# (El puerto de administración puede abrir unos ms después de /ready: se espera, y un fallo de la lectura no detiene la corrida.)
+if [ "${PRESCRAPE:-1}" = 1 ]; then
+  wait_until "puerto de administración" curl -fs localhost:8081/actuator/health
+  curl -s localhost:8081/actuator/prometheus >/dev/null || true; curl -s localhost:8081/actuator/prometheus >/dev/null || true
+fi
 
 now_ms=$(( $(date +%s%3N) ))
 start_ms=$(( now_ms + BOOT * 1000 ))
 hold_start_ms=$(( start_ms + RAMP * 1000 ))
+echo "$engine_start_ms $ready_ms $start_ms" > "$WORK/times.txt"
 if [ "$STORM_RATE" != 0 ]; then
   SCHED_INGEST_TLS=disabled SCHED_INGEST_URL=localhost:50051 taskset -c "$STORM_CPUS" \
     java -jar "$SIMULATOR" seat-storm --plaintext --rate "$STORM_RATE" --duration "$(( HOLD + 10 ))" \
@@ -127,9 +152,10 @@ snap() { # $1 = 0|1: foto de CPU por hilo, CPU por núcleo, k6 y Prometheus (SNA
   local n=$1
   [ "${SNAP:-noprom}" = none ] && { date +%s%3N > "$WORK/t$n.txt"; return 0; }
   date +%s%3N > "$WORK/t$n.txt"
-  for t in /proc/$engine/task/*; do cat "$t/stat" 2>/dev/null; done > "$WORK/threads$n.txt"
+  # (|| true: un hilo que termina justo entre listar y leer haría fallar el último `cat` y, con set -e, toda la corrida)
+  { for t in /proc/$engine/task/*; do cat "$t/stat" 2>/dev/null || true; done; } > "$WORK/threads$n.txt"
   grep '^cpu' /proc/stat > "$WORK/stat$n.txt"
-  for p in $(pgrep -x k6 || true); do echo "$p $(cat /proc/$p/stat 2>/dev/null)"; done > "$WORK/k6proc$n.txt"
+  { for p in $(pgrep -x k6 || true); do echo "$p $(cat /proc/$p/stat 2>/dev/null || true)"; done; } > "$WORK/k6proc$n.txt"
   [ "${SNAP:-noprom}" = noprom ] && return 0
   curl -s localhost:8081/actuator/prometheus > "$WORK/prom$n.txt" || true
 }
@@ -176,5 +202,6 @@ sleep 1
 if [ "${COLD_PROF:-0}" = 1 ] && [ -f "$WORK/cold.jfr" ]; then "$JAVA_HOME_DIR/bin/jfrconv" --cpu --threads -o collapsed "$WORK/cold.jfr" "$WORK/cold.collapsed" >/dev/null 2>&1 || true; fi
 # Fin de la corrida: histogramas del motor acumulados (incluye el arranque en frío), una sola lectura, ya sin carga.
 curl -s localhost:8081/actuator/prometheus > "$WORK/prom_end.txt" || true
+uptime >> "$WORK/loadavg.txt"
 echo "$ENGINE_CPUS $ENGINE_HEAP $ENGINE_OPTS $ENGINE_ENV" > "$WORK/config.txt"
 python3 bench/overflow-summary.py "$WORK" "$ENGINE_CPUS" "$K6_CPUS" "$RATE"
