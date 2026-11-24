@@ -62,6 +62,9 @@ check_port() {
     exit 1
   fi
 }
+# Restos de una corrida anterior interrumpida (los dos compose, para incluir a Grafana y compañía).
+docker compose -f bench/docker-compose.pico.yml -f bench/docker-compose.observe.yml --profile r3 \
+  down -v --remove-orphans >/dev/null 2>&1 || true
 check_port "HTTP del balanceador" 18080
 if [ "$OBSERVE" = 1 ]; then
   check_port Grafana "$GRAFANA_PORT" GRAFANA_PORT
@@ -99,6 +102,8 @@ if [ "$OBSERVE" = 1 ]; then
   fi
   export GRAFANA_ADMIN_PASSWORD
 fi
+# Ctrl+C o kill: no dejar contenedores (ni sus puertos) ocupados para la próxima corrida.
+trap 'echo; echo "==> Interrumpido: apagando los contenedores de la corrida"; $C --profile r3 down -v >/dev/null 2>&1; exit 130' INT TERM
 SIMULATOR=simulation/target/sched-simulation.jar
 mkdir -p "$OUT"
 
