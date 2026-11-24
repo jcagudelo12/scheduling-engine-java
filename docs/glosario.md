@@ -33,7 +33,7 @@ Términos del proyecto. Entre paréntesis, el nombre que se usa en el código cu
 | **Ingesta** (rol `ingest`) | La única instancia que recibe datos de la institución por gRPC y escribe el historial |
 | **Consulta** (rol `query`) | Instancias que atienden a los estudiantes por HTTP. Se escalan horizontalmente |
 | **Rol** (`SCHED_ROLE`) | `ingest`, `query` o `all` (ambos en un proceso) |
-| **Lista** (`Readiness`, `/ready`) | La instancia ya leyó todo el historial y su réplica tiene catálogo y no está `stale` (se recalcula en cada consulta); el balanceador puede enviarle tráfico |
+| **Lista** (`Readiness`, `/ready`) | La instancia ya leyó todo el historial, su réplica tiene catálogo y no está `stale` (se recalcula en cada consulta) y, en los roles que atienden consultas, la JVM ya se calentó (una sola vez por proceso); el balanceador puede enviarle tráfico |
 | **Institución** | La universidad: dueña de los datos y fuente de verdad. El motor nunca la consulta ([ADR 0002](adr/0002-roles-de-la-institucion.md)) |
 | **SDK** o **agente** | Programa que instalará cada universidad para enviar su catálogo al motor ([diseño](sdk.md)). Todavía no existe |
 | **Institución simulada** (`FakeInstitution`) | Cliente gRPC del simulador que hace el papel del SDK en desarrollo ([simulador.md](simulador.md)) |

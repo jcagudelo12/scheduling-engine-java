@@ -54,7 +54,8 @@ flowchart LR
 - **Todas las instancias**, la de ingesta incluida, leen el historial en orden y lo aplican a
   su réplica local. Mismas entradas en el mismo orden producen el mismo catálogo en todas.
 - **Las instancias de consulta** se escalan horizontalmente detrás de Traefik, que solo les
-  envía tráfico cuando `/ready` responde 200, es decir, cuando su réplica ya está al día.
+  envía tráfico cuando `/ready` responde 200, es decir, cuando su réplica ya está al día y la JVM ya se calentó
+  (consultas sintéticas en proceso, 10-60 s la primera vez; ver [Calentamiento de la JVM](inicio-rapido.md#calentamiento-de-la-jvm)).
 - Con `SCHED_ROLE=all`, un solo proceso hace ingesta y consultas. Sirve para desarrollo y
   despliegues pequeños, pero igual necesita NATS.
 
@@ -116,7 +117,7 @@ sequenceDiagram
     participant Q as engine (query)
     participant EST as Estudiante
 
-    Note over Q: Al arrancar lee el historial.<br/>Cuando no queda nada pendiente y hay catálogo fresco, /ready = 200
+    Note over Q: Al arrancar lee el historial.<br/>Cuando no queda nada pendiente y hay catálogo fresco, calienta la JVM (una vez) y entonces /ready = 200
     SDK->>ING: LoadCatalog(seq=1, grupos…)
     ING->>LOG: Snapshot(seq=1) y purga lo anterior
     LOG-->>Q: Snapshot(seq=1)
@@ -264,7 +265,9 @@ interna** (Prometheus): no lo publique al host ni lo ponga detrás del balancead
 | `sched_search_empty_total{operation}` | contador | Búsquedas sin ninguna combinación |
 | `sched_replica_seq` | gauge | `seq` del catálogo de la réplica (`-1` si aún no hay carga completa) |
 | `sched_replica_stale` | gauge 0/1 | `1` si la réplica está desactualizada ([ADR 0003](adr/0003-replica-del-catalogo.md)) |
-| `sched_replica_ready` | gauge 0/1 | Lo mismo que `/ready`: `1` si la instancia recibe tráfico |
+| `sched_replica_ready` | gauge 0/1 | Lo mismo que `/ready`: `1` si la instancia recibe tráfico (incluye que ya se calentó) |
+| `sched_warmup_duration_seconds` | gauge | Segundos que duró el calentamiento de la JVM; `-1` mientras no ha terminado (solo roles `query` y `all` con `SCHED_WARMUP=on`) |
+| `sched_warmup_searches` | gauge | Solicitudes sintéticas que ejecutó el calentamiento. No cuentan en `sched_search_*` ni en `sched_http_*` |
 | `sched_follower_lag` | gauge | Mensajes del historial que el follower aún no lee (`0` = al día) |
 | `sched_follower_resyncs_total` | contador | Veces que el follower perdió NATS y empezó a releer el historial |
 | `sched_ingest_events_total{outcome}` | contador | Cambios de la institución: `applied`, `duplicate`, `gap` (rechazado, pide carga completa) y `failed` (no se pudo escribir) |

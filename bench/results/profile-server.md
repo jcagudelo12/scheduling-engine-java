@@ -624,7 +624,7 @@ hilos hermanos, CPU ajena en los núcleos del motor (≤ 0,09), más portadores,
 
 **Recomendado y NO implementado** (requiere código en el camino de la solicitud o en el arranque, o es de operación):
 
-1. **Precalentar antes de aceptar tráfico** (código, arranque): al arrancar, y antes de que `/ready` responda 200, pasar un centenar de miles de solicitudes sintéticas por el camino completo (firma de un token de prueba con una llave efímera, validación, solver, JSON) hasta que el C2 haya
+1. **Precalentar antes de aceptar tráfico** (código, arranque) — **implementado después y medido en [`warmup.md`](warmup.md)** (`SCHED_WARMUP`): al arrancar, y antes de que `/ready` responda 200, pasar un centenar de miles de solicitudes sintéticas por el camino completo (firma de un token de prueba con una llave efímera, validación, solver, JSON) hasta que el C2 haya
    compilado lo caliente (~30-40 s con 2 núcleos). Ganancia esperada, según los datos: la fase fría desaparece. Con la rampa de 120 s el p99 de calentamiento es de 7 ms y no hay descartadas, contra 1,3-1,5 s de p99 de calentamiento y 3.600-12.700 descartadas con la rampa de 20 s
    a 3.000-4.000/s. Hace falta no contaminar las métricas con ese tráfico y el costo es de unos 30-40 s más de arranque (hay que escalar antes de que abra la matrícula).
 2. **Limitar las solicitudes en curso por réplica y responder 503 con `Retry-After`** (código, filtro) cuando la cola supere un umbral (p. ej. 64-128 solicitudes en vuelo, en el borde del planificador). No aumenta la capacidad, pero acota la latencia de lo aceptado: en la fase fría había
@@ -642,7 +642,7 @@ hilos hermanos, CPU ajena en los núcleos del motor (≤ 0,09), más portadores,
 - Un solo equipo (Ryzen 7 2700, `schedutil`, sin turbo), sin Traefik ni red real: las cifras absolutas no se trasladan a otra CPU, y el efecto de la frecuencia (apartado 6) es específico del governor.
 - `taskset` de 2 hilos lógicos no es un `cpu_limit` de contenedor (no se midió con cgroup); el motor corrió como jar en el host con G1 por defecto (los experimentos con Serial son con el mismo jar).
 - No se activó `tomcat.mbeanregistry` ni se midió el tiempo previo al filtro de la aplicación con un temporizador propio; la espera previa al filtro se infiere (histograma del motor contra k6, `submissions` del planificador y `Recv-Q` de los sockets).
-- La fase fría solo se perfiló en una corrida (`ctimer`); no se identificaron los métodos que podrían evitar la compilación costosa, ni se probó el precalentamiento (propuesta 1) ni el límite de solicitudes en curso (propuesta 2).
+- La fase fría solo se perfiló en una corrida (`ctimer`); no se identificaron los métodos que podrían evitar la compilación costosa, ni se probó el precalentamiento (propuesta 1; ver [`warmup.md`](warmup.md)) ni el límite de solicitudes en curso (propuesta 2).
 - No se separó cuánto del factor 2 de la firma a baja utilización es frecuencia y cuánto estados de reposo y cachés.
 - Se descartó `asprof -e wall`: la espera previa al filtro ocurre en el núcleo y en la cola del planificador (no en hilos que se puedan perfilar por espera), y el perfil de CPU de la fase fría respondía mejor a la pregunta.
 - Son ~85 corridas con 1 a 3 repeticiones por configuración; el ruido entre corridas del mismo punto es grande (p99 de 6 a 22 ms a 3.500/s) y solo las diferencias con rangos disjuntos se tomaron como reales.

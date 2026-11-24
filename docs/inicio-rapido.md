@@ -291,19 +291,104 @@ El motor se configura con variables de entorno (ver
 | `SCHED_MAX_BODY_BYTES` | `65536` | Tamaño máximo del cuerpo HTTP; más es `413` |
 | `SCHED_SEARCH_TIMEOUT_MS` | `150` | Tiempo máximo de cada búsqueda en milisegundos; `0` lo desactiva. Al vencer, la respuesta trae `"complete": false` ([ADR 0009](adr/0009-tiempo-maximo-de-la-busqueda.md)) |
 | `SCHED_SOLVER` | `forward-checking` | Algoritmo de búsqueda: `forward-checking` o `backtracking` (línea base) |
+| `SCHED_WARMUP` | `on` | `on`: antes de responder `200` en `/ready`, la instancia calienta la JVM con consultas sintéticas en proceso (solo roles `query` y `all`; en `ingest` no hace nada). `off`: sin calentamiento. Otro valor impide arrancar. Ver [Calentamiento de la JVM](#calentamiento-de-la-jvm) |
+| `SCHED_WARMUP_MIN_S` | `10` | Segundos mínimos de calentamiento: antes de esto no se evalúa si el compilador JIT ya se calmó. `0` o más y no mayor que el máximo |
+| `SCHED_WARMUP_MAX_S` | `60` | Tope en segundos: a los 60 s la instancia se declara calentada aunque el JIT siga compilando. Al menos `1` |
+| `SCHED_WARMUP_THREADS` | `0` | Hilos de calentamiento; `0` = uno por CPU disponible |
 
 ### JVM y dimensionamiento
 
 La imagen arranca la JVM con el recolector Serial (`-XX:+UseSerialGC`) y hasta el 75 % de la memoria del contenedor: con una réplica de ~2 núcleos y un heap
 pequeño gasta menos CPU por solicitud y tiene menos cola de latencia que G1 (ver [`bench/results/profile-server.md`](../bench/results/profile-server.md)). Para otro
 recolector hay que redefinir el `ENTRYPOINT`: un `-XX:+UseG1GC` en `JAVA_TOOL_OPTIONS` choca con este y la JVM no arranca. Con token, una réplica de 2 núcleos ya
-caliente sostiene 4.000-4.500 solicitudes/s con p99 de ~20 ms; **recién arrancada** (JVM fría) y con el pico encima, ~2.500/s: ponga las réplicas en servicio antes de que abra la matrícula.
+caliente sostiene 4.000-4.500 solicitudes/s con p99 de ~20 ms; **recién arrancada** (JVM fría, `SCHED_WARMUP=off`) y con el pico encima, ~2.500/s. Con el calentamiento por defecto la réplica solo recibe tráfico
+cuando ya está caliente (ver [Calentamiento de la JVM](#calentamiento-de-la-jvm)); aun así, ponga las réplicas en servicio antes de que abra la matrícula.
 
 El simulador usa `SCHED_INGEST_URL` (por defecto `localhost:50051`) para saber dónde está la
 ingesta. Como la ingesta exige mTLS, también necesita el certificado de cliente: `--tls-cert`,
 `--tls-key` y `--tls-ca` (o `SCHED_INGEST_TLS_CERT`, `SCHED_INGEST_TLS_KEY` y `SCHED_INGEST_TLS_CA`),
 o `--plaintext` (`SCHED_INGEST_TLS=disabled`) contra un motor con `SCHED_GRPC_TLS=disabled`. Ver
 [simulador.md](simulador.md).
+
+### Calentamiento de la JVM
+
+**Qué problema resuelve.** Una JVM recién arrancada compila el código caliente con el JIT (C2) durante ~30 s y, en una réplica de 2 núcleos, eso
+le quita capacidad justo cuando el balanceador le envía el pico de matrícula: las solicitudes se encolan y la latencia llega a segundos
+([análisis](../bench/results/profile-server.md#por-qué-se-desborda-la-latencia-con-token)). Por eso `/ready` no responde `200` hasta que la JVM está caliente.
+
+**Qué hace.** Solo en los roles `query` y `all` y con `SCHED_WARMUP=on` (por defecto). En cuanto la réplica tiene por primera vez un catálogo al día,
+un hilo propio lanza `SCHED_WARMUP_THREADS` hilos (por defecto uno por CPU) que repiten, **en proceso y sin red**, el camino de una consulta con
+entradas sintéticas (ids `warmup-N`, sin datos de estudiantes) generadas con semilla fija a partir de cursos y grupos reales del catálogo cargado:
+4 a 7 cursos, con y sin `avoid`, y alternativas con `selection` y `enrolled` construidos desde grupos reales. Pasa por los casos de uso reales
+(`GenerateCombinations`, `SuggestAlternatives`) con el mismo solver, tope de resultados y tiempo máximo, por los controladores y por el mismo
+`JsonMapper` de Spring MVC. Con `SCHED_AUTH=jwt` también verifica firmas EdDSA, con un verificador **aparte** y una llave Ed25519 efímera (generada en
+memoria, descartada al terminar, nunca registrada en el verificador real, ni en disco ni en logs): no abre ningún atajo de seguridad. No toca las
+métricas `sched_search_*` ni `sched_http_*` (usa `EngineMetrics.NOOP` y no pasa por los filtros HTTP); lo suyo está en `sched_warmup_duration_seconds` y
+`sched_warmup_searches`.
+
+**Cuándo termina.** Cada segundo mide cuánto tiempo de compilación JIT se acumuló (`CompilationMXBean`). Termina cuando, pasados `SCHED_WARMUP_MIN_S`,
+**3 ventanas seguidas** compilan menos de 30 ms, o a los `SCHED_WARMUP_MAX_S` pase lo que pase. Medido en el entorno de la prueba (2 núcleos): 18-33 s
+(el log lo dice: `calentamiento terminado: duración=… búsquedas=… motivo=…`). Si el calentamiento falla con una excepción, se registra y la instancia se
+marca lista igualmente; nunca la deja `503` para siempre. Se hace **una sola vez por proceso**: si después la réplica queda `stale` y se recupera,
+`/ready` vuelve a `200` sin calentar otra vez. Al apagar el contexto se interrumpe.
+
+| Variable | Por defecto | Qué hace |
+|---|---|---|
+| `SCHED_WARMUP` | `on` | `on` u `off`. Otro valor impide arrancar |
+| `SCHED_WARMUP_MIN_S` | `10` | Antes de esto no se mira si el JIT se calmó |
+| `SCHED_WARMUP_MAX_S` | `60` | Tope duro |
+| `SCHED_WARMUP_THREADS` | `0` | Hilos de calentamiento (`0` = uno por CPU disponible) |
+| `SCHED_WARMUP_HTTP` | `off` | `on`: además pide `GET /health` a `localhost` (sin token, ruta pública de la sonda) para calentar Tomcat y Spring MVC. Mejora la latencia de los primeros 30 s pero alarga el calentamiento unos 25 s: ver [`bench/results/warmup.md`](../bench/results/warmup.md) |
+
+**Efecto medido** (1 réplica de 2 núcleos fijados, recolector Serial, con token, 3.500 solicitudes/s con rampa de 20 s que empieza apenas `/ready` responde `200`,
+3 corridas alternadas de cada una; detalle, 4.000/s, método y amenazas a la validez en [`bench/results/warmup.md`](../bench/results/warmup.md)):
+
+| 3.500/s, con token | Sin calentamiento (`SCHED_WARMUP=off`) | Con calentamiento (por defecto) |
+|---|--:|--:|
+| Hasta `/ready` desde el arranque del proceso | 4,8 s (4,7-4,9) | 28,9 s (23,0-37,7) |
+| p50 de los primeros 10 / 10-20 / 20-30 s | 296 / 275 / 113 ms | 1,1 / 0,6 / 0,5 ms |
+| p99 de los primeros 10 / 10-20 / 20-30 s | 1.153 / 3.355 / 594 ms | 18 / 12 / 17 ms |
+| Solicitudes que k6 no pudo lanzar a tiempo (cola) | 5.358 (2.083-8.516) | 0 |
+| Errores (no 200 ni 422) | 0 | 0 |
+| p50 / p99 en estado estable | 0,44 / 4,7 ms | 0,46 / 4,6 ms |
+
+**Guía para Kubernetes.** El calentamiento hace que el pod tarde más en estar listo (~25-30 s con 2 núcleos, más con menos CPU) y que use todos sus núcleos mientras
+tanto. Ajustes recomendados:
+
+```yaml
+containers:
+  - name: engine
+    readinessProbe:            # /ready: 503 hasta tener catálogo al día Y la JVM caliente; vuelve a 503 si la réplica queda stale
+      httpGet: { path: /ready, port: 8080 }
+      periodSeconds: 5
+      failureThreshold: 2
+    startupProbe:              # margen para arrancar + leer el historial + calentar (hasta SCHED_WARMUP_MAX_S = 60 s): 36 x 5 s = 180 s
+      httpGet: { path: /ready, port: 8080 }
+      periodSeconds: 5
+      failureThreshold: 36
+    livenessProbe:             # /health no depende del calentamiento ni del catálogo: no reinicie el pod por estar calentando
+      httpGet: { path: /health, port: 8080 }
+      periodSeconds: 10
+      failureThreshold: 3
+    lifecycle:
+      preStop:
+        exec: { command: ["sleep", "10"] }   # deja que el Service/Ingress retire el pod antes de cerrar (el motor termina las solicitudes en curso: server.shutdown=graceful)
+    resources:
+      requests: { cpu: "2", memory: 1Gi }
+      limits: { cpu: "3", memory: 1Gi }      # no ajuste el límite de CPU al de la solicitud: el calentamiento y el JIT usan todos los núcleos y un límite justo los estrangula (throttling)
+terminationGracePeriodSeconds: 60            # preStop (10 s) + cierre ordenado (hasta 30 s) + margen
+strategy:
+  type: RollingUpdate
+  rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }   # el pod nuevo debe estar listo (caliente) antes de retirar uno viejo
+```
+
+- Si el catálogo puede estar vacío al desplegar por primera vez (aún no se hizo la carga completa), `/ready` no pasa a `200` y una `startupProbe` sobre `/ready` reiniciaría
+  el pod en bucle: use `/health` en la `startupProbe` en ese caso (la `readinessProbe` sigue controlando el tráfico).
+- **HPA**: el pod nuevo tarda ~25-30 s en recibir tráfico (+ lo que tarde el nodo y la imagen), así que escale antes: umbral de CPU algo menor (p. ej. 50-60 % en vez
+  de 70-80 %) y `behavior.scaleUp` sin ventana de estabilización larga. Escale **antes** de que abra la matrícula; el calentamiento no sustituye tener las
+  réplicas listas para el pico.
+- Con menos CPU por pod el JIT y el calentamiento tardan más (el máximo de 60 s lo acota); suba `SCHED_WARMUP_MAX_S` y la `startupProbe` si ve `motivo=tiempo máximo` en el log.
+- Con Docker, la imagen declara `HEALTHCHECK … --start-period=90s`; con otro orquestador, dé al menos ese margen antes de contar `/ready` como fallo.
 
 ### Seguridad
 

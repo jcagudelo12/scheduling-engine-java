@@ -358,7 +358,7 @@ curl -X POST localhost:8080/alternatives -H "Authorization: Bearer $TOKEN" \
 | Endpoint | Responde `200` cuando | Si no | Lo usa |
 |---|---|---|---|
 | `GET /health` | El proceso está vivo | | Orquestador (liveness) |
-| `GET /ready` | La réplica está al día: leyó el historial de NATS, tiene un catálogo cargado y no está `stale` | `503` | Healthcheck de Docker, Traefik y readiness en Kubernetes |
+| `GET /ready` | La réplica está al día (leyó el historial de NATS, tiene un catálogo cargado y no está `stale`) **y** la JVM ya se calentó (solo roles `query` y `all`, con `SCHED_WARMUP=on`) | `503` | Healthcheck de Docker, Traefik y readiness en Kubernetes |
 
 `/ready` refleja el estado **actual**, no solo el arranque. Responde `503` mientras no haya
 catálogo cargado (historial vacío), si se pierde la sincronía (hueco de `seq`, cierre del
@@ -366,3 +366,8 @@ stream de cambios, caída de NATS en el follower) y mientras la instancia relee 
 Vuelve a `200` cuando se aplica una carga completa (o, si solo se cerró el stream sin hueco,
 con el siguiente cambio en orden). Así el balanceador no envía tráfico a una réplica `stale`.
 Ver [ADR 0005](adr/0005-varias-instancias-con-historial-compartido.md).
+
+Con `SCHED_WARMUP=on` (por defecto), cuando la réplica tiene por primera vez un catálogo al día la instancia ejecuta consultas
+sintéticas en proceso durante 10-60 s y **sigue respondiendo `503` en `/ready` hasta que termina**; `/health` responde `200`
+desde el arranque. El calentamiento se hace una sola vez por proceso: si después la réplica queda `stale` y se recupera, `/ready`
+vuelve a `200` sin calentar otra vez. Ver [Calentamiento de la JVM](inicio-rapido.md#calentamiento-de-la-jvm).

@@ -147,6 +147,12 @@ docker compose -f deploy/docker-compose.yml logs engine
 docker compose -f deploy/docker-compose.yml logs nats
 ```
 
+Con `SCHED_WARMUP=on` (por defecto) la réplica tampoco está lista hasta que termina de calentar la JVM: tras
+cargar el catálogo tarda entre 10 y 60 s más en pasar a `healthy` (la imagen declara `--start-period=90s` para
+que ese tiempo no cuente como fallos). Lo ve en el log (`calentamiento iniciado` / `calentamiento terminado`)
+y en la métrica `sched_warmup_duration_seconds` (`-1` mientras dura). Para saltarlo en desarrollo:
+`SCHED_WARMUP=off`.
+
 Lo habitual es que NATS no esté arriba todavía. El motor se reinicia solo (`restart:
 unless-stopped`) y se recupera cuando NATS responde.
 
