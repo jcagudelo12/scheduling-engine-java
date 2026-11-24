@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import sched.adapters.grpc.catalog.CatalogGrpcService;
 import sched.adapters.grpc.events.CatalogEventsGrpcService;
 import sched.adapters.http.AlternativesController;
@@ -41,6 +42,7 @@ import sched.application.ports.EngineMetrics;
 import sched.solver.BacktrackingSolver;
 import sched.solver.ForwardCheckingSolver;
 import sched.solver.Solver;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Composición: crea los adaptadores concretos y los inyecta en los casos de uso. */
 @Configuration
@@ -118,9 +120,57 @@ class EngineConfig {
         return new CatalogReplica();
     }
 
+    /**
+     * Valida {@code SCHED_WARMUP*}: un valor inválido impide arrancar. El calentamiento solo aplica
+     * a los roles que sirven consultas; en {@code ingest} no hay nada que calentar.
+     */
     @Bean
-    Readiness readiness(CatalogReplica replica) {
-        return new Readiness(replica);
+    WarmupSettings warmupSettings(
+            Role role,
+            @Value("${sched.warmup}") String mode,
+            @Value("${sched.warmup.http}") String httpMode,
+            @Value("${sched.warmup.min-s}") long minSeconds,
+            @Value("${sched.warmup.max-s}") long maxSeconds,
+            @Value("${sched.warmup.threads}") int threads) {
+        WarmupSettings settings = WarmupSettings.parse(mode, httpMode, minSeconds, maxSeconds, threads);
+        return role.servesQueries() ? settings : WarmupSettings.OFF;
+    }
+
+    /** Con el calentamiento activo, la instancia no está lista hasta que {@link Warmup} la marque calentada. */
+    @Bean
+    Readiness readiness(CatalogReplica replica, WarmupSettings warmup) {
+        return new Readiness(replica, warmup.enabled());
+    }
+
+    /**
+     * Calienta la JVM con consultas sintéticas en proceso antes de que {@code /ready} responda 200
+     * (ver {@link Warmup}). Mismo solver, tope de resultados y tiempo máximo que las consultas reales.
+     */
+    @Bean
+    @ConditionalOnExpression("(" + SERVES_QUERIES + ") and '${sched.warmup}' == 'on'")
+    Warmup warmup(
+            WarmupSettings settings,
+            Solver solver,
+            CatalogReplica replica,
+            Readiness readiness,
+            JsonMapper json,
+            RequestLimits limits,
+            AuthMode authMode,
+            Environment environment,
+            @Value("${sched.max-combinations}") int maxCombinations,
+            @Value("${sched.max-alternatives}") int maxAlternatives,
+            @Value("${sched.search-timeout-ms}") long timeoutMs) {
+        return new Warmup(settings, solver, replica, readiness, json, limits, maxCombinations, maxAlternatives,
+                searchTimeout(timeoutMs), authMode == AuthMode.JWT,
+                // El puerto real (con server.port=0 es el que eligió el sistema) existe cuando arranca el servidor web.
+                () -> environment.getProperty("local.server.port", Integer.class,
+                        environment.getProperty("server.port", Integer.class, 8080)));
+    }
+
+    @Bean
+    @ConditionalOnExpression("(" + SERVES_QUERIES + ") and '${sched.warmup}' == 'on'")
+    WarmupMeters warmupMeters(Warmup warmup) {
+        return new WarmupMeters(warmup);
     }
 
     @Bean(initMethod = "start", destroyMethod = "close")

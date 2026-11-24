@@ -85,6 +85,7 @@ import tools.jackson.databind.json.JsonMapper;
         "sched.limits.max-body-bytes=2048",
         // Nivel DEBUG en todo: la prueba de logs comprueba que aun así no se filtra nada.
         "logging.level.root=DEBUG",
+        "sched.warmup=off",
         "logging.level.io.netty=INFO",
         "logging.level.io.grpc=INFO",
         "logging.level.com.github.dockerjava=INFO",
