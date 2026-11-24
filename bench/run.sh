@@ -4,6 +4,7 @@
 #   bench/run.sh                                         # 3 repeticiones, tasas por defecto
 #   REPS=5 RATES="500 1000" DURATION=60s bench/run.sh
 #   MAX_COMBINATIONS=50 OUT=bench/results-50 bench/run.sh # otra variante, en otra carpeta
+#   K6_DASHBOARD=1 bench/run.sh                           # panel web de k6 en http://127.0.0.1:5665 y un reporte HTML por tasa
 #
 # Cada repetición parte de cero (NATS vacío), con el motor en núcleos fijos, el mismo catálogo
 # y los mismos estudiantes en el mismo orden. Resultado: bench/results/report.md.
@@ -17,6 +18,8 @@ COOLDOWN=${COOLDOWN:-5}
 export ENGINE_CPUS=${ENGINE_CPUS:-4,6}   # 2 núcleos físicos; sus hermanos (5, 7) quedan libres
 export NATS_CPUS=${NATS_CPUS:-2,3}
 K6_CPUS=${K6_CPUS:-8-15}
+K6_DASHBOARD=${K6_DASHBOARD:-0}      # 1: panel web de k6 (127.0.0.1:5665); al terminar cada tasa, reporte HTML en $OUT
+K6_DASHBOARD_PORT=${K6_DASHBOARD_PORT:-5665}
 EXPECTED_CPUS=$(( $(tr ',' '\n' <<< "$ENGINE_CPUS" | wc -l) ))
 export MAX_COMBINATIONS=${MAX_COMBINATIONS:-5}   # combinaciones por respuesta
 OUT=${OUT:-bench/results}   # debe estar dentro de bench/ (se monta en el contenedor de k6)
@@ -50,8 +53,13 @@ sample() { # contenedor archivo
 
 run_k6() { # prefijo tasa duración nombre
   local prefix=$1 rate=$2 duration=$3 name=$4
+  local k6_extra=()
+  if [ "$K6_DASHBOARD" = 1 ]; then
+    k6_extra=(-p "127.0.0.1:$K6_DASHBOARD_PORT:5665" -e K6_WEB_DASHBOARD=true -e K6_WEB_DASHBOARD_PORT=5665
+      -e K6_WEB_DASHBOARD_EXPORT="/${OUT}/${prefix}_${name}_k6_dashboard.html")
+  fi
   sample "bench-$ENGINE-1" "$OUT/${prefix}_${name}_stats.txt" & local sampler=$!
-  docker run --rm --network bench_default --cpuset-cpus "$K6_CPUS" -u "$(id -u):$(id -g)" \
+  docker run --rm --network bench_default --cpuset-cpus "$K6_CPUS" "${k6_extra[@]}" -u "$(id -u):$(id -g)" \
     -v "$PWD/bench:/bench" -w /bench \
     -e TARGET="http://$ENGINE:8080" -e RATE="$rate" -e DURATION="$duration" \
     -e OUT="/${OUT}/${prefix}_${name}.json" \

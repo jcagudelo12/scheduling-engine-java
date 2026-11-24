@@ -10,6 +10,8 @@ bench/worst-hot.json
 bench/drain.txt
 bench/results*/*.json
 bench/results*/*.txt
+# Reporte HTML del panel web de k6 (K6_DASHBOARD=1); los HTML de perfilado en results/profile/ sí se versionan
+bench/results*/*_k6_dashboard.html
 bench/.venv/
 __pycache__/
 

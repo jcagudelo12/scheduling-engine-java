@@ -7,6 +7,12 @@
 #   MODE=worst bench/run-pico.sh                         # peor caso 7x8 con SCHED_SEARCH_TIMEOUT_MS=150
 #   DIRECT=1 PREFIX=directo STEPS="1:8000" bench/run-pico.sh   # k6 contra la réplica, sin pasar por Traefik
 #
+# Para seguir la prueba en vivo desde el navegador (ver bench/README.md, "Seguir una prueba en vivo"):
+#   OBSERVE=1 bench/run-pico.sh          # Grafana (127.0.0.1:3000) con el tablero "Motor de horarios", Prometheus y cAdvisor
+#   K6_DASHBOARD=1 bench/run-pico.sh     # panel web de k6 (127.0.0.1:5665); al final deja bench/results/<prefijo>_..._k6_dashboard.html
+# Por defecto ninguno de los dos se activa y el script se comporta como siempre. Observar consume algo de CPU
+# (Grafana, Prometheus y cAdvisor van fijados a OBSERVE_CPUS, por defecto 2,3): las cifras de esa corrida no son la medición oficial.
+#
 # El motor calienta la JVM antes de que /ready responda 200 (SCHED_WARMUP=on por defecto, ver bench/results/warmup.md) y el paso espera a
 # que las réplicas estén "healthy" (healthcheck = /ready): la carga empieza con la réplica caliente. `SCHED_WARMUP=off bench/run-pico.sh`
 # reproduce el arranque en frío de bench/results/report-pico.md (medido antes del calentamiento).
@@ -39,6 +45,11 @@ K6_CPUS_1R=${K6_CPUS_1R:-8-15}
 K6_CPUS_3R=${K6_CPUS_3R:-5,7,9,11,13,15}
 DIRECT=${DIRECT:-0}                  # 1: k6 contra engine1:8080, sin Traefik (solo con 1 réplica)
 STORM_CPUS=${STORM_CPUS:-7}
+OBSERVE=${OBSERVE:-0}                # 1: añade Prometheus, Grafana y cAdvisor (bench/docker-compose.observe.yml)
+K6_DASHBOARD=${K6_DASHBOARD:-0}      # 1: activa el panel web de k6 (127.0.0.1:5665) y exporta su reporte HTML
+export OBSERVE_CPUS=${OBSERVE_CPUS:-2,3}   # núcleos de Grafana, Prometheus y cAdvisor (no son del motor ni de k6)
+export GRAFANA_PORT=${GRAFANA_PORT:-3000}
+K6_DASHBOARD_PORT=${K6_DASHBOARD_PORT:-5665}
 
 if [ "$MODE" = worst ]; then
   PREFIX=${PREFIX:-worst}
@@ -53,6 +64,21 @@ fi
 HTTP=18080
 GRPC=15051
 C="docker compose -f bench/docker-compose.pico.yml"
+observers=()
+if [ "$OBSERVE" = 1 ]; then
+  C="$C -f bench/docker-compose.observe.yml"
+  observers=(prometheus grafana cadvisor)
+  # La contraseña de Grafana sale de deploy/.env (la genera deploy/setup-dev.sh); si no existe, se crea una
+  # al azar para esta corrida y se muestra una vez.
+  GRAFANA_ADMIN_PASSWORD=$(grep -s '^GRAFANA_ADMIN_PASSWORD=' deploy/.env | cut -d= -f2- || true)
+  if [ -z "$GRAFANA_ADMIN_PASSWORD" ]; then
+    GRAFANA_ADMIN_PASSWORD="g$(openssl rand -hex 12)"
+    echo "==> Sin deploy/.env: contraseña de Grafana solo para esta corrida (usuario admin): $GRAFANA_ADMIN_PASSWORD"
+  else
+    echo "==> Grafana: http://127.0.0.1:$GRAFANA_PORT (usuario admin; contraseña GRAFANA_ADMIN_PASSWORD de deploy/.env)"
+  fi
+  export GRAFANA_ADMIN_PASSWORD
+fi
 SIMULATOR=simulation/target/sched-simulation.jar
 mkdir -p "$OUT"
 
@@ -109,7 +135,7 @@ for step in $STEPS; do
   profile=(); engines=(engine1)
   if [ "$replicas" = 3 ]; then profile=(--profile r3); engines=(engine1 engine2 engine3); fi
   $C --profile r3 down -v >/dev/null 2>&1 || true
-  $C "${profile[@]}" up -d nats ingest "${engines[@]}" lb >/dev/null 2>&1
+  $C "${profile[@]}" up -d nats ingest "${engines[@]}" lb "${observers[@]}" >/dev/null 2>&1
   wait_until "ingesta" bash -c "exec 3<>/dev/tcp/localhost/$GRPC"
   for attempt in $(seq 1 50); do
     SCHED_INGEST_TLS=disabled SCHED_INGEST_URL="localhost:$GRPC" java -jar "$SIMULATOR" load bench/scenario.json >/dev/null 2>&1 && break
@@ -133,7 +159,14 @@ for step in $STEPS; do
     storm=$!
   fi
   sample "$OUT/${tag}_stats.txt" & sampler=$!
-  docker run --rm --name bench-pico-k6 --network bench-pico_default --cpuset-cpus "$k6_cpus" \
+  k6_extra=()
+  if [ "$K6_DASHBOARD" = 1 ]; then
+    # Panel web de k6: solo en 127.0.0.1; al terminar escribe el reporte HTML junto a los demás resultados.
+    k6_extra=(-p "127.0.0.1:$K6_DASHBOARD_PORT:5665" -e K6_WEB_DASHBOARD=true -e K6_WEB_DASHBOARD_PORT=5665
+      -e K6_WEB_DASHBOARD_EXPORT="/${OUT}/${tag}_k6_dashboard.html")
+    echo "    panel de k6: http://127.0.0.1:$K6_DASHBOARD_PORT (reporte final: $OUT/${tag}_k6_dashboard.html)"
+  fi
+  docker run --rm --name bench-pico-k6 --network bench-pico_default --cpuset-cpus "$k6_cpus" "${k6_extra[@]}" \
     -u "$(id -u):$(id -g)" -v "$PWD/bench:/bench" -w /bench \
     -e TARGET="$target" -e START_MS="$start_ms" -e RATE="$rate" -e RAMP="$RAMP" -e HOLD="$HOLD" -e DOWN="$DOWN" \
     -e ALT_SHARE="$ALT_SHARE" -e COMBOS_FILE="$COMBOS_FILE" -e STORM_AT_MS="$hold_start" \

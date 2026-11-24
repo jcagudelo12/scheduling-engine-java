@@ -1,0 +1,77 @@
+# Observabilidad de la prueba del pico: Prometheus, Grafana (con el tablero "Motor de horarios") y
+# cAdvisor, en la MISMA red que bench/docker-compose.pico.yml. No se usa solo: bench/run-pico.sh lo
+# añade cuando se corre con OBSERVE=1.
+#
+#   OBSERVE=1 bench/run-pico.sh
+#   # equivale a: docker compose -f bench/docker-compose.pico.yml -f bench/docker-compose.observe.yml ...
+#
+# Reutiliza deploy/grafana/ (datasource y tablero, los mismos que en deploy/) y raspa los servicios
+# del pico con deploy/prometheus/prometheus-bench.yml.
+#
+# OBSERVAR CUESTA CPU. Los tres servicios quedan fijados a OBSERVE_CPUS (por defecto 2,3), que no son
+# núcleos del motor ni de k6, pero sí de Traefik: con la distribución por defecto de bench/run-pico.sh
+# los 16 hilos ya están asignados y no sobra ninguno. Por eso, las cifras de una corrida con OBSERVE=1
+# sirven para ver cómo se comporta el motor, no para citarlas como medición oficial.
+#
+# Seguridad (solo desarrollo): Grafana y Prometheus se publican únicamente en 127.0.0.1; cAdvisor no
+# publica nada. cAdvisor lee el host (cgroups, /var/lib/docker) en solo lectura: riesgo aceptado solo
+# para desarrollo. Los contenedores llevan nombre fijo (obs-*), sin el prefijo bench-pico-, para que
+# el muestreo de "docker stats" de run-pico.sh no los mezcle con los de la medición.
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    container_name: obs-prometheus
+    cpuset: ${OBSERVE_CPUS:-2,3}
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=1d
+    volumes:
+      - ../deploy/prometheus/prometheus-bench.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    depends_on: [cadvisor]
+
+  grafana:
+    image: grafana/grafana:13.3.1
+    container_name: obs-grafana
+    cpuset: ${OBSERVE_CPUS:-2,3}
+    # Se niega a arrancar sin contraseña: con la variable vacía Grafana usaría admin/admin.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - '[ -n "$$GF_SECURITY_ADMIN_PASSWORD" ] || { echo "falta GRAFANA_ADMIN_PASSWORD" >&2; exit 1; }; exec /run.sh'
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/motor-de-horarios.json
+    volumes:
+      - ../deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on: [prometheus]
+
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.61.1
+    container_name: obs-cadvisor
+    cpuset: ${OBSERVE_CPUS:-2,3}
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=5s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
+      - --disable_metrics=disk,diskIO,tcp,udp,percpu,sched,process,hugetlb,referenced_memory,cpu_topology,resctrl,advtcp
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
