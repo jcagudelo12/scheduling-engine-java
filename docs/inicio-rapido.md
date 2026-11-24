@@ -1,5 +1,7 @@
 # Inicio rápido
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [gRPC](conceptos-base.md#grpc-y-protocol-buffers) (llamadas remotas entre programas con mensajes binarios); [TLS/mTLS](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (conexión cifrada; en mTLS el servidor también exige certificado al cliente); [CA](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (autoridad que firma certificados); [PEM/PKCS#8/SAN](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (formato de texto de llaves y certificados, tipo de llave privada y lista de nombres válidos de un certificado); [JWT/Bearer](conceptos-base.md#jwt-y-bearer) (token firmado enviado en `Authorization: Bearer`); [EdDSA/Ed25519](conceptos-base.md#firma-eddsa-ed25519-y-llaves-pública-y-privada) (algoritmo de firma con llave pública y privada); [kid](conceptos-base.md#kid-el-identificador-de-la-llave) (nombre de la llave con que se firmó el token); [NATS/JetStream](conceptos-base.md#nats-y-jetstream) (mensajería que guarda en orden el historial del catálogo); [ADR](conceptos-base.md#adr-decisiones-de-arquitectura) (registro de una decisión de arquitectura); [JVM/JIT](conceptos-base.md#jit-y-calentamiento) (la máquina virtual de Java y su compilador que optimiza el código mientras corre); [p99/SLO](conceptos-base.md#prometheus-micrometer-y-métricas) (p99 es el valor bajo el cual está el 99 % de las mediciones; SLO es la meta de calidad fijada); [k6](conceptos-base.md#k6) (generador de carga HTTP); [Traefik](conceptos-base.md#traefik) (balanceador de carga); [Prometheus/Micrometer](conceptos-base.md#prometheus-micrometer-y-métricas) (recolector y librería de métricas); [Actuator](conceptos-base.md#actuator) (módulo de Spring Boot que publica estado y métricas); [ECS/MDC](conceptos-base.md#logs-y-formato-ecs) (estándar de campos de los logs en JSON y contexto de cada línea de log); [Docker/Compose](conceptos-base.md#docker) (contenedores y su orquestación local); [Maven](conceptos-base.md#maven-y-el-wrapper-mvnw) (herramienta de compilación y pruebas).
+
 Tres formas de correr el motor, de la más simple a la más completa. Elige según lo que
 necesites:
 
@@ -14,14 +16,18 @@ de `./mvnw`, y Git Bash o WSL para los ejemplos con `curl`.
 
 ## Requisitos
 
-| Herramienta | Versión | Cómo comprobarla |
-|---|---|---|
-| Java (JDK) | 25 | `java -version` |
-| Docker con Compose | Docker 24+ y Compose v2 | `docker compose version` |
-| Maven | No hace falta: el wrapper `./mvnw` lo descarga | |
+Los requisitos completos (qué instalar, cómo comprobarlo, Docker sin `sudo`, memoria y CPU) están en
+[README.md](../README.md#requisitos-previos). En resumen:
 
-La primera compilación descarga las dependencias y tarda unos minutos; las siguientes son
-mucho más rápidas.
+| Camino | Necesita |
+|---|---|
+| A. Simulación en memoria | JDK 25 |
+| B. Sistema completo con Docker | Docker 24+ con Compose v2, `openssl` y `curl`; el paso 5 además JDK 25 para firmar el token |
+| C. Desarrollo local | JDK 25 y Docker (solo para NATS) |
+
+Maven no hace falta: el wrapper `./mvnw` lo descarga. La primera compilación descarga las
+dependencias y tarda unos minutos; las siguientes son mucho más rápidas. Si algo falla:
+[solucion-de-problemas.md](solucion-de-problemas.md).
 
 ## A. Simulación en memoria
 
@@ -32,6 +38,11 @@ y sin abrir puertos.
 ./mvnw verify                                              # compila y corre las pruebas
 java -jar simulation/target/sched-simulation.jar simulate
 ```
+
+`simulate` calcula con el solver de **línea base** (`BacktrackingSolver`) y no con el
+`forward-checking` que usa el motor por defecto, y sin tiempo máximo ni preferencias. Sirve para ver
+el resultado de un escenario, no para medir cuánto tarda el motor real (para eso, el
+[camino C](#c-desarrollo-local) o [`bench/`](../bench/README.md)).
 
 Salida esperada (los tiempos varían):
 
@@ -135,6 +146,8 @@ docker compose -f deploy/docker-compose.yml run --rm simulator seats 2 MAT101-01
 docker run --rm --network host -v "$PWD/deploy/certs/client:/certs:ro" fullstorydev/grpcurl \
   -cacert /certs/ca.crt -cert /certs/client.crt -key /certs/client.key localhost:50051 list
 
+# (--network host solo funciona en Linux; en Docker Desktop de Windows o macOS ver contrato-institucion.md#probar-el-contrato-a-mano)
+
 # Escalar a 5 réplicas de consulta; Traefik las toma solo cuando están listas
 docker compose -f deploy/docker-compose.yml up -d --scale engine=5
 ```
@@ -184,7 +197,7 @@ docker run -d --rm --name sched-nats -p 127.0.0.1:4222:4222 nats:2 -js
 
 # 2. Compilar y arrancar el motor (HTTP :8080, gRPC :50051)
 ./mvnw -q package -DskipTests
-SCHED_AUTH=none SCHED_GRPC_TLS=disabled java -jar server/target/sched-server.jar
+SCHED_AUTH=none SCHED_GRPC_TLS=disabled java -jar server/target/sched-server-exec.jar
 
 # 3. En otra terminal: cargar el catálogo y consultar
 java -jar simulation/target/sched-simulation.jar load --plaintext
@@ -198,7 +211,7 @@ Para probar el token en local, genere un par de llaves, arranque el motor con
 ```sh
 java -jar simulation/target/sched-simulation.jar keygen --out /tmp/sched-keys --kid dev-1
 SCHED_AUTH=jwt SCHED_JWT_PUBLIC_KEYS=/tmp/sched-keys SCHED_JWT_ISSUER=institucion-dev \
-  SCHED_JWT_AUDIENCE=sched-engine SCHED_GRPC_TLS=disabled java -jar server/target/sched-server.jar
+  SCHED_JWT_AUDIENCE=sched-engine SCHED_GRPC_TLS=disabled java -jar server/target/sched-server-exec.jar
 TOKEN=$(java -jar simulation/target/sched-simulation.jar token --key /tmp/sched-keys/dev-1.key \
   --kid dev-1 --student est-001 --courses MAT101,FIS101 --iss institucion-dev --aud sched-engine)
 curl -X POST localhost:8080/combinations -H "Authorization: Bearer $TOKEN" \
@@ -227,7 +240,7 @@ sigue exigiéndolo.
 # 1. Levantar el motor: desarrollo local sin token (camino C, pasos 1 y 2) o el compose (camino B)
 docker run -d --rm --name sched-nats -p 127.0.0.1:4222:4222 nats:2 -js
 ./mvnw -q package -DskipTests
-SCHED_AUTH=none SCHED_GRPC_TLS=disabled java -jar server/target/sched-server.jar
+SCHED_AUTH=none SCHED_GRPC_TLS=disabled java -jar server/target/sched-server-exec.jar
 
 # 2. En otra terminal: generar el catálogo de demostración (oferta sintética estilo ITM, con
 #    créditos y tope) y cargarlo. La semilla (--seed, 42 por defecto) fija la oferta.
@@ -257,7 +270,7 @@ Notas de uso:
 - **Alertas de cupo.** "Este grupo se quedó sin cupo" pide alternativas de inmediato; para que el
   motor también vea el cupo en 0, envía el cambio con el simulador (la página muestra el comando
   exacto): `java -jar simulation/target/sched-simulation.jar seats <seq> <grupo> 0 --plaintext`.
-- **Tiempo máximo (escenario E5).** Cada llamada espera 800 ms; si el motor no responde, la página
+- **Tiempo máximo ([escenario E5](calidad/04-escenarios.md#e5-el-motor-no-responde-a-tiempo-en-el-pico)).** Cada llamada espera 800 ms; si el motor no responde, la página
   avisa en menos de 1 s que continúes tu matrícula en la plataforma institucional, sin bloquearse.
   Para probarlo cambia el plazo: `http://localhost:8080/app/?timeout=1` (1 ms).
 - **Soporte.** Cada llamada envía un `X-Request-Id` y la página lo muestra en los errores.
@@ -300,8 +313,11 @@ El motor se configura con variables de entorno (ver
 
 La imagen arranca la JVM con el recolector Serial (`-XX:+UseSerialGC`) y hasta el 75 % de la memoria del contenedor: con una réplica de ~2 núcleos y un heap
 pequeño gasta menos CPU por solicitud y tiene menos cola de latencia que G1 (ver [`bench/results/profile-server.md`](../bench/results/profile-server.md)). Para otro
-recolector hay que redefinir el `ENTRYPOINT`: un `-XX:+UseG1GC` en `JAVA_TOOL_OPTIONS` choca con este y la JVM no arranca. Con token, una réplica de 2 núcleos ya
-caliente sostiene 4.000-4.500 solicitudes/s con p99 de ~20 ms; **recién arrancada** (JVM fría, `SCHED_WARMUP=off`) y con el pico encima, ~2.500/s. Con el calentamiento por defecto la réplica solo recibe tráfico
+recolector hay que redefinir el `ENTRYPOINT`: un `-XX:+UseG1GC` en `JAVA_TOOL_OPTIONS` choca con este y la JVM no arranca. **Con token** (verificar la firma
+cuesta CPU), una réplica de 2 núcleos **ya caliente** sostiene 4.000-4.500 solicitudes/s con p99 de ~12-19 ms; **recién arrancada**
+(JVM fría, `SCHED_WARMUP=off`) y con el pico encima, ~2.500/s. Sin token (solo desarrollo) la misma réplica sostiene ~5.000/s con p99 de ~3 ms.
+Todas son cifras del perfil `itm` (3.475 grupos, 5 combinaciones por respuesta) medidas el 2026-11-22; en qué condiciones se midió cada una:
+[`bench/README.md`](../bench/README.md#en-qué-condiciones-se-midió-cada-cifra). Con el calentamiento por defecto la réplica solo recibe tráfico
 cuando ya está caliente (ver [Calentamiento de la JVM](#calentamiento-de-la-jvm)); aun así, ponga las réplicas en servicio antes de que abra la matrícula.
 
 El simulador usa `SCHED_INGEST_URL` (por defecto `localhost:50051`) para saber dónde está la
@@ -340,7 +356,7 @@ marca lista igualmente; nunca la deja `503` para siempre. Se hace **una sola vez
 | `SCHED_WARMUP_THREADS` | `0` | Hilos de calentamiento (`0` = uno por CPU disponible) |
 | `SCHED_WARMUP_HTTP` | `off` | `on`: además pide `GET /health` a `localhost` (sin token, ruta pública de la sonda) para calentar Tomcat y Spring MVC. Mejora la latencia de los primeros 30 s pero alarga el calentamiento unos 25 s: ver [`bench/results/warmup.md`](../bench/results/warmup.md) |
 
-**Efecto medido** (1 réplica de 2 núcleos fijados, recolector Serial, con token, 3.500 solicitudes/s con rampa de 20 s que empieza apenas `/ready` responde `200`,
+**Efecto medido el 2026-11-23** (perfil `itm` de 3.475 grupos, 5 combinaciones por respuesta, 1 réplica de 2 núcleos fijados, recolector Serial, con token, 3.500 solicitudes/s con rampa de 20 s que empieza apenas `/ready` responde `200`,
 3 corridas alternadas de cada una; detalle, 4.000/s, método y amenazas a la validez en [`bench/results/warmup.md`](../bench/results/warmup.md)):
 
 | 3.500/s, con token | Sin calentamiento (`SCHED_WARMUP=off`) | Con calentamiento (por defecto) |
@@ -437,6 +453,20 @@ docker compose -f deploy/docker-compose.yml --profile observability up -d
 ```
 
 Qué mide cada métrica: [arquitectura.md](arquitectura.md#observabilidad).
+
+**Nivel de log.** Por defecto el motor registra desde `INFO`. Se cambia con variables de entorno
+`LOGGING_LEVEL_<paquete>=<nivel>` (la forma estándar de Spring Boot: el punto del nombre del paquete
+pasa a guion bajo y todo va en mayúsculas), con niveles `TRACE`, `DEBUG`, `INFO`, `WARN` y `ERROR`:
+
+```sh
+LOGGING_LEVEL_SCHED=DEBUG java -jar server/target/sched-server-exec.jar           # más detalle solo del código del motor (paquete sched)
+LOGGING_LEVEL_ROOT=WARN LOGGING_LEVEL_SCHED_SERVER=INFO java -jar ...           # menos ruido: todo en WARN salvo sched.server (lo usa bench/)
+LOGGING_LEVEL_IO_NETTY=WARN                                                      # silenciar un paquete concreto (aquí, Netty)
+```
+
+En el `docker-compose.yml`, las variables van en `environment:` del servicio. No subas
+`org.springframework.web` a `DEBUG` en producción: registra cuerpos de solicitud
+([política de logs](arquitectura.md#observabilidad)).
 
 Para logs en JSON (por ejemplo, para un recolector): `SCHED_LOG_FORMAT=json`. Cada solicitud acepta
 la cabecera `X-Request-Id` (o se genera una) y la devuelve en la respuesta; el mismo id sale en las

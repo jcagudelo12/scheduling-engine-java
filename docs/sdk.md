@@ -1,10 +1,20 @@
 # SDK de integración (diseño propuesto)
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [SDK](conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc) (agente que cada universidad instalaría para enviar su catálogo; todavía no existe); [gRPC](conceptos-base.md#grpc-y-protocol-buffers) (llamadas remotas entre programas con mensajes binarios); [TLS/mTLS](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (conexión cifrada; en mTLS el servidor también exige certificado al cliente); [PEM/PKCS#8/SAN](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (formato de texto de llaves y certificados, tipo de llave privada y lista de nombres válidos de un certificado); [ADR](conceptos-base.md#adr-decisiones-de-arquitectura) (registro de una decisión de arquitectura); [Testcontainers](conceptos-base.md#testcontainers) (levanta contenedores reales desde las pruebas); [JDBC/YAML/PostgreSQL/SQL](conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc) (piezas del SDK propuesto: acceso a bases de datos y formato de configuración).
+
 > **Estado: propuesta.** El SDK todavía no existe. Este documento recoge el diseño del
 > [ADR 0007](adr/0007-sdk-de-integracion-propio.md) para que el equipo lo discuta y lo
 > implemente. Los nombres, el formato de configuración y los ejemplos son ilustrativos.
 
 ## Qué es
+
+> **Sobre las tecnologías de este documento.** El SDK es una propuesta; **JDBC**, **PostgreSQL** y **YAML**
+> aparecen como ejemplos del diseño, no como algo que el motor use hoy. **JDBC** es el estándar de Java para
+> hablar con bases de datos (un *driver* por cada tipo de base); **PostgreSQL** es una base de datos
+> relacional popular, usada aquí solo como ejemplo de la base académica de una universidad; **YAML** es un
+> formato de texto para configuración (`clave: valor` con sangrías), con el que cada universidad configuraría
+> el agente sin escribir código. Más en
+> [conceptos-base.md](conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc).
 
 Un **agente** que cada universidad instala en su infraestructura. Lee el sistema académico,
 detecta los cambios de grupos y cupos, y los envía al motor en tiempo real por el

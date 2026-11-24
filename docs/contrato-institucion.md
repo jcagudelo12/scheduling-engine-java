@@ -1,5 +1,7 @@
 # Contrato gRPC con la institución
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [gRPC](conceptos-base.md#grpc-y-protocol-buffers) (llamadas remotas entre programas con mensajes binarios); [protobuf](conceptos-base.md#grpc-y-protocol-buffers) (formato binario de esos mensajes); [TLS/mTLS](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (conexión cifrada; en mTLS el servidor también exige certificado al cliente); [CA](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (autoridad que firma certificados); [PEM/PKCS#8/SAN](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (formato de texto de llaves y certificados, tipo de llave privada y lista de nombres válidos de un certificado); [JWT/Bearer](conceptos-base.md#jwt-y-bearer) (token firmado enviado en `Authorization: Bearer`); [EdDSA/Ed25519](conceptos-base.md#firma-eddsa-ed25519-y-llaves-pública-y-privada) (algoritmo de firma con llave pública y privada); [kid](conceptos-base.md#kid-el-identificador-de-la-llave) (nombre de la llave con que se firmó el token); [NATS/JetStream](conceptos-base.md#nats-y-jetstream) (mensajería que guarda en orden el historial del catálogo); [ADR](conceptos-base.md#adr-decisiones-de-arquitectura) (registro de una decisión de arquitectura); [SDK](conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc) (agente que cada universidad instalaría para enviar su catálogo; todavía no existe).
+
 Cómo entra la información de la universidad al motor. Este contrato lo implementará el
 [SDK](sdk.md), y hoy lo implementa el simulador
 ([`FakeInstitution`](../simulation/src/main/java/sched/simulation/FakeInstitution.java)).
@@ -211,6 +213,13 @@ La ingesta tiene **gRPC Server Reflection** habilitado, así que las herramienta
 servicios y mensajes sin necesidad de los `.proto`. Los ejemplos usan las imágenes de Docker
 para no tener que instalar nada; `--network host` permite llegar a `localhost:50051`.
 
+> **`--network host` solo funciona en Linux.** En Docker Desktop (Windows y macOS) el contenedor
+> corre dentro de una máquina virtual y no ve el `localhost` de tu equipo. Allí quita
+> `--network host`, publica el puerto de la interfaz web (`-p 8085:8085` en grpcui) y apunta a
+> `host.docker.internal:50051` en lugar de `localhost:50051`. Como el certificado del servidor
+> nombra `localhost` y no `host.docker.internal`, añade también `-servername localhost` a
+> grpcurl o grpcui para que la verificación del nombre pase.
+
 Primero levanta el motor ([inicio-rapido.md](inicio-rapido.md), camino B o C). Los ejemplos
 presentan el certificado de cliente de desarrollo (`deploy/certs/client`, generado por
 `deploy/setup-dev.sh`); contra un motor con `SCHED_GRPC_TLS=disabled` (camino C) sustituya esas
@@ -220,10 +229,10 @@ tres opciones por `-plaintext`.
 
 ```sh
 docker run --rm --network host -v "$PWD/deploy/certs/client:/certs:ro" fullstorydev/grpcui \
-  -cacert /certs/ca.crt -cert /certs/client.crt -key /certs/client.key -port 8081 localhost:50051
+  -cacert /certs/ca.crt -cert /certs/client.crt -key /certs/client.key -port 8085 localhost:50051
 ```
 
-Abre <http://localhost:8081>. Ahí puedes elegir el servicio y el método, llenar el mensaje en un
+Abre <http://localhost:8085>. Ahí puedes elegir el servicio y el método, llenar el mensaje en un
 formulario y ver la respuesta, como en Swagger UI.
 
 ### grpcurl: línea de comandos

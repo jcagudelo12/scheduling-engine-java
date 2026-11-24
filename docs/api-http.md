@@ -1,11 +1,16 @@
 # API HTTP
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [JSON/HTTP](conceptos-base.md#http-json-y-rest) (formato de los datos y protocolo de la API); [JWT/Bearer](conceptos-base.md#jwt-y-bearer) (token firmado enviado en `Authorization: Bearer`); [EdDSA/Ed25519](conceptos-base.md#firma-eddsa-ed25519-y-llaves-pública-y-privada) (algoritmo de firma con llave pública y privada); [kid](conceptos-base.md#kid-el-identificador-de-la-llave) (nombre de la llave con que se firmó el token); [NATS/JetStream](conceptos-base.md#nats-y-jetstream) (mensajería que guarda en orden el historial del catálogo); [ADR](conceptos-base.md#adr-decisiones-de-arquitectura) (registro de una decisión de arquitectura); [SDK](conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc) (agente que cada universidad instalaría para enviar su catálogo; todavía no existe); [JVM/JIT](conceptos-base.md#jit-y-calentamiento) (la máquina virtual de Java y su compilador que optimiza el código mientras corre); [Traefik](conceptos-base.md#traefik) (balanceador de carga).
+
 La API que usa el portal de matrícula para pedir combinaciones, más las sondas de salud. Escucha
 en `SCHED_HTTP_PORT` (por defecto `8080`) en las instancias con rol `query` o `all`. En el
 despliegue con Docker se llega a ella a través de Traefik, en `localhost:8080`.
 
-> **Nota.** La forma de la solicitud cambiará cuando se agreguen más filtros del estudiante y las
-> 5 mejores combinaciones ([ADR 0006](adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md)).
+> **Nota.** Hoy el motor devuelve las `SCHED_MAX_COMBINATIONS` mejores combinaciones (200 por
+> defecto) ordenadas por la penalización de `avoid`; el estudiante solo puede pedir esa preferencia.
+> La forma de la solicitud cambiará cuando se agreguen los demás filtros y criterios del estudiante
+> (jornada, sede, días libres, huecos…) y el valor por defecto pase a 5
+> ([ADR 0006](adr/0006-mejores-combinaciones-con-ramificacion-y-poda.md#nota-de-implementación-2026-11-23)).
 
 ## Autenticación
 

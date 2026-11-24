@@ -1,5 +1,7 @@
 # Solución de problemas
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [gRPC](conceptos-base.md#grpc-y-protocol-buffers) (llamadas remotas entre programas con mensajes binarios); [TLS/mTLS](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (conexión cifrada; en mTLS el servidor también exige certificado al cliente); [CA](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (autoridad que firma certificados); [PEM/PKCS#8/SAN](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (formato de texto de llaves y certificados, tipo de llave privada y lista de nombres válidos de un certificado); [JWT/Bearer](conceptos-base.md#jwt-y-bearer) (token firmado enviado en `Authorization: Bearer`); [kid](conceptos-base.md#kid-el-identificador-de-la-llave) (nombre de la llave con que se firmó el token); [NATS/JetStream](conceptos-base.md#nats-y-jetstream) (mensajería que guarda en orden el historial del catálogo); [JVM/JIT](conceptos-base.md#jit-y-calentamiento) (la máquina virtual de Java y su compilador que optimiza el código mientras corre); [Traefik](conceptos-base.md#traefik) (balanceador de carga); [Maven](conceptos-base.md#maven-y-el-wrapper-mvnw) (herramienta de compilación y pruebas); [Docker/Compose](conceptos-base.md#docker) (contenedores y su orquestación local).
+
 Errores comunes al correr el motor y cómo resolverlos. Si encuentras uno que no está aquí,
 agrégalo.
 
@@ -25,6 +27,18 @@ chmod +x mvnw
 
 En Windows usa `mvnw.cmd`.
 
+### `permission denied while trying to connect to the Docker daemon socket`
+
+Tu usuario no puede usar Docker sin `sudo`. En Linux, agrégalo al grupo `docker` y **cierra sesión y vuelve a
+entrar** (o abre una terminal nueva con `newgrp docker`):
+
+```sh
+sudo usermod -aG docker $USER
+docker run --rm hello-world     # debe funcionar sin sudo
+```
+
+Lo necesitan el camino B, la imagen del motor y las pruebas de integración con Testcontainers.
+
 ## Arranque del motor
 
 ### `Unable to connect to NATS servers: [nats://localhost:4222]`
@@ -45,8 +59,15 @@ corriendo. Opciones:
 
 ```sh
 docker compose -f deploy/docker-compose.yml down   # si es el despliegue
-SCHED_HTTP_PORT=8081 java -jar server/target/sched-server.jar
+SCHED_HTTP_PORT=8082 java -jar server/target/sched-server-exec.jar
 ```
+
+Ojo al elegir el puerto alternativo: el `8081` **no** sirve. Es el puerto de administración
+(`SCHED_MANAGEMENT_PORT`: métricas y estado interno, sin token). Si le das el mismo número a
+`SCHED_HTTP_PORT`, el motor arranca, pero la API de los estudiantes y las rutas de administración
+(`/actuator/prometheus`) quedan mezcladas en un solo puerto, y se pierde la separación que
+protege las métricas. Usa otro libre (`8082` en el ejemplo) o cambia el de administración con
+`SCHED_MANAGEMENT_PORT`.
 
 Para ver qué usa el puerto: `ss -ltnp | grep 8080` en Linux, `lsof -i :8080` en macOS.
 
@@ -59,6 +80,11 @@ datos.
 ### `SCHED_ROLE inválido: …`
 
 Los únicos valores válidos son `ingest`, `query` y `all`.
+
+### Quiero ver más detalle en el log del motor
+
+Sube el nivel con una variable de entorno, por ejemplo `LOGGING_LEVEL_SCHED=DEBUG` (solo el código del motor).
+Cómo se escriben estas variables y qué evitar: [Métricas y logs](inicio-rapido.md#métricas-y-logs).
 
 ## Datos y consultas
 

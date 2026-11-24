@@ -1,5 +1,7 @@
 # Arquitectura
 
+> **Términos técnicos.** Si alguno de estos términos es nuevo, cada enlace lo explica desde cero en [conceptos-base.md](conceptos-base.md), y el [glosario](glosario.md) traduce el vocabulario del dominio: [NATS/JetStream](conceptos-base.md#nats-y-jetstream) (mensajería que guarda en orden el historial del catálogo); [gRPC](conceptos-base.md#grpc-y-protocol-buffers) (llamadas remotas entre programas con mensajes binarios); [protobuf](conceptos-base.md#grpc-y-protocol-buffers) (formato binario de esos mensajes); [TLS/mTLS](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (conexión cifrada; en mTLS el servidor también exige certificado al cliente); [CA](conceptos-base.md#tls-mtls-certificados-ca-y-openssl) (autoridad que firma certificados); [JWT/Bearer](conceptos-base.md#jwt-y-bearer) (token firmado enviado en `Authorization: Bearer`); [EdDSA/Ed25519](conceptos-base.md#firma-eddsa-ed25519-y-llaves-pública-y-privada) (algoritmo de firma con llave pública y privada); [kid](conceptos-base.md#kid-el-identificador-de-la-llave) (nombre de la llave con que se firmó el token); [SDK](conceptos-base.md#piezas-del-sdk-propuesto-sql-jdbc-postgresql-yaml-y-cdc) (agente que cada universidad instalaría para enviar su catálogo; todavía no existe); [ADR](conceptos-base.md#adr-decisiones-de-arquitectura) (registro de una decisión de arquitectura); [JVM/JIT](conceptos-base.md#jit-y-calentamiento) (la máquina virtual de Java y su compilador que optimiza el código mientras corre); [Traefik](conceptos-base.md#traefik) (balanceador de carga); [p99/SLO](conceptos-base.md#prometheus-micrometer-y-métricas) (p99 es el valor bajo el cual está el 99 % de las mediciones; SLO es la meta de calidad fijada); [Prometheus/Micrometer](conceptos-base.md#prometheus-micrometer-y-métricas) (recolector y librería de métricas); [ECS/MDC](conceptos-base.md#logs-y-formato-ecs) (estándar de campos de los logs en JSON y contexto de cada línea de log); [MRV](conceptos-base.md#mrv) (decidir primero el curso con menos grupos posibles); [ArchUnit](conceptos-base.md#archunit) (reglas de arquitectura escritas como pruebas); [JaCoCo](conceptos-base.md#jacoco-y-la-cobertura) (mide la cobertura de las pruebas); [Testcontainers](conceptos-base.md#testcontainers) (levanta contenedores reales desde las pruebas); [JMH](conceptos-base.md#jmh) (microbenchmarks de Java); [CI](conceptos-base.md#github-actions-integración-continua) (integración continua: compila y prueba cada cambio); [Actuator](conceptos-base.md#actuator) (módulo de Spring Boot que publica estado y métricas).
+
 Cómo está armado el motor y cómo fluyen los datos. El porqué de cada decisión está en los
 [ADRs](adr/); aquí se explica cómo encajan las piezas.
 
@@ -183,6 +185,8 @@ flowchart TB
     SRV --> NB
 ```
 
+Cada carpeta tiene su propio README con qué contiene, de qué depende y cómo probarla sola: [domain](../domain/README.md), [solver](../solver/README.md), [application](../application/README.md), [proto](../proto/README.md), [adapters](../adapters/README.md), [server](../server/README.md), [simulation](../simulation/README.md), [benchmarks](../benchmarks/README.md), [quality](../quality/README.md) y [deploy](../deploy/README.md).
+
 | Módulo | Qué contiene | Depende de |
 |---|---|---|
 | `domain` | Modelo puro: `Catalog`, `Section`, `TimeSlot`, `CatalogEvent`. Sin dependencias externas | nada |
@@ -256,7 +260,7 @@ interna** (Prometheus): no lo publique al host ni lo ponga detrás del balancead
 
 | Métrica | Tipo | Qué mide |
 |---|---|---|
-| `sched_http_latency_seconds{endpoint,status}` | histograma | Latencia de `/combinations` y `/alternatives`, con cubetas de 10, 25, 50, 100, **200** (el SLO del escenario E2), 500 ms y 1 s. De él salen los percentiles de todo el servicio con `histogram_quantile` |
+| `sched_http_latency_seconds{endpoint,status}` | histograma | Latencia de `/combinations` y `/alternatives`, con cubetas de 10, 25, 50, 100, **200** (el SLO del [escenario E2](calidad/04-escenarios.md#e2-una-búsqueda-que-explota)), 500 ms y 1 s. De él salen los percentiles de todo el servicio con `histogram_quantile` |
 | `sched_http_latency_quantiles_seconds{endpoint,status,quantile}` | resumen | p50, p95 y p99 de esa réplica (no se promedian entre réplicas; use el histograma para eso) |
 | `sched_http_rejected_total{status}` | contador | Rechazos 4xx del motor: `401` (sin token o inválido), `400` (cuerpo inválido o contradice al token), `413` (cuerpo grande), `422` (tope de créditos) |
 | `sched_search_duration_seconds{operation}` y `..._quantiles_seconds` | histograma y resumen | Solo la búsqueda del solver, sin la lectura de la réplica ni el HTTP; `operation` es `combinations` o `alternatives` |
