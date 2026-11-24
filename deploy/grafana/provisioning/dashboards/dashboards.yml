@@ -1,0 +1,11 @@
+# Le dice a Grafana que cargue como tableros los .json de /var/lib/grafana/dashboards
+# (en el repositorio, deploy/grafana/dashboards/).
+apiVersion: 1
+providers:
+  - name: motor
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

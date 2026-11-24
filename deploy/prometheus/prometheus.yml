@@ -2,7 +2,8 @@
 # Raspa el puerto de administración (SCHED_MANAGEMENT_PORT, 8081) de cada instancia por la red
 # interna de compose: ese puerto no pasa por Traefik, no exige token y no se publica al host.
 global:
-  scrape_interval: 15s
+  # 5 s para que el tablero de Grafana (refresco de 5 s) se vea "en vivo".
+  scrape_interval: 5s
   evaluation_interval: 15s
 
 rule_files:
@@ -30,3 +31,7 @@ scrape_configs:
     relabel_configs:
       - target_label: role
         replacement: ingest
+  # CPU, memoria y red por contenedor (cAdvisor, solo desarrollo; no publica puertos).
+  - job_name: cadvisor
+    static_configs:
+      - targets: [cadvisor:8080]

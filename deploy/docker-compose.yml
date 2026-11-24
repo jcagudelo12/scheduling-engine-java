@@ -20,6 +20,12 @@
 #           token y no se publica al host; solo Prometheus lo alcanza. La interfaz de Prometheus queda
 #           en 127.0.0.1:9090 (solo la máquina local):
 #             docker compose -f deploy/docker-compose.yml --profile observability up -d
+# - grafana (perfil "observability"): tableros en el navegador, en 127.0.0.1:3000 (solo la máquina
+#           local). Usuario "admin" y contraseña GRAFANA_ADMIN_PASSWORD de deploy/.env (la genera
+#           setup-dev.sh); sin acceso anónimo. El datasource y el tablero "Motor de horarios" se
+#           aprovisionan desde deploy/grafana/: al abrir Grafana ya están.
+# - cadvisor (perfil "observability"): CPU, memoria y red de cada contenedor. No publica puertos:
+#           solo Prometheus lo raspa por la red interna. Lee el host en solo lectura (ver abajo).
 #
 # Los secretos (deploy/.env, deploy/certs/, deploy/keys/) los genera deploy/setup-dev.sh y no se
 # versionan. El HTTP de los estudiantes va sin TLS en este despliegue: en producción el TLS se
@@ -142,6 +148,63 @@ services:
     depends_on:
       - engine
       - ingest
+      - cadvisor
+    restart: unless-stopped
+
+  # Tableros (solo desarrollo): ver deploy/grafana/. Perfil opcional, junto a prometheus.
+  # Sin volumen a propósito: todo (datasource y tablero) sale de deploy/grafana/, así que no hay
+  # estado que se desfase de la contraseña de deploy/.env. Lo que se edite en la interfaz no persiste.
+  grafana:
+    image: grafana/grafana:13.3.1
+    profiles: [observability]
+    # Se niega a arrancar sin contraseña: con la variable vacía Grafana usaría admin/admin.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - '[ -n "$$GF_SECURITY_ADMIN_PASSWORD" ] || { echo "falta GRAFANA_ADMIN_PASSWORD en deploy/.env (ejecute deploy/setup-dev.sh)" >&2; exit 1; }; exec /run.sh'
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_ALLOW_ORG_CREATE: "false"
+      # Sin telemetría ni consultas de actualización hacia fuera.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_ANALYTICS_FEEDBACK_LINKS_ENABLED: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/motor-de-horarios.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      # Solo en la interfaz local: no debe quedar abierta a la red.
+      # GRAFANA_PORT cambia el puerto del host si el 3000 ya lo usa otro programa.
+      - "127.0.0.1:${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # CPU, memoria y red por contenedor (solo desarrollo). SIN puertos publicados: solo Prometheus
+  # lo raspa, por la red interna. RIESGO ACEPTADO SOLO PARA DESARROLLO: para medir contenedores
+  # necesita leer el host (cgroups, /var/lib/docker y el socket de Docker), todo en solo lectura.
+  # No lo use así en producción; allí use el agente de métricas del orquestador.
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.61.1
+    profiles: [observability]
+    command:
+      - --docker_only=true
+      - --housekeeping_interval=5s
+      - --store_container_labels=false
+      - --whitelisted_container_labels=com.docker.compose.service,com.docker.compose.project
+      - --disable_metrics=disk,diskIO,tcp,udp,percpu,sched,process,hugetlb,referenced_memory,cpu_topology,resctrl,advtcp
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
     restart: unless-stopped
 
   # Institución simulada (solo para desarrollo). No arranca con "up": se usa a demanda con

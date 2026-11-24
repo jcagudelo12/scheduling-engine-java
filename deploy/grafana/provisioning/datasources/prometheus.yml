@@ -1,0 +1,15 @@
+# Datasource de Grafana como código: Grafana lo lee al arrancar, no hay que crearlo a mano.
+# "prometheus" es el nombre del servicio de Prometheus en la red de compose (el de deploy/ y el de
+# bench/ se llaman igual, así el mismo tablero sirve en los dos).
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Igual al scrape_interval de Prometheus: Grafana calcula bien las ventanas de rate().
+      timeInterval: 5s

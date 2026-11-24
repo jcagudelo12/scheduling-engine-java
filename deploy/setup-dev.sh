@@ -3,7 +3,7 @@
 #   - deploy/certs/  CA y certificados (gRPC de ingesta con mTLS, NATS con TLS, cliente simulado)
 #   - deploy/keys/   par Ed25519 para firmar y verificar tokens (public/ la monta el motor;
 #                    private/ queda en su máquina, para firmar tokens de prueba)
-#   - deploy/.env    contraseña de NATS (aleatoria) y demás variables
+#   - deploy/.env    contraseñas de NATS y de Grafana (aleatorias) y demás variables
 #
 #   deploy/setup-dev.sh            # crea lo que falta
 #   deploy/setup-dev.sh --force    # regenera todo (cambia las credenciales)
@@ -44,12 +44,25 @@ else
   chmod 600 .env
   echo ".env creado con una contraseña de NATS nueva"
 fi
+# Contraseña de Grafana (perfil "observability"): se añade si falta, también en un .env anterior,
+# sin tocar el resto de sus variables.
+if ! grep -Eq '^GRAFANA_ADMIN_PASSWORD=.+' .env || grep -q '^GRAFANA_ADMIN_PASSWORD=cambiar-' .env; then
+  grafana_password="g$(openssl rand -hex 24)"
+  sed -i '/^GRAFANA_ADMIN_PASSWORD=/d' .env
+  printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$grafana_password" >> .env
+  chmod 600 .env
+  echo "GRAFANA_ADMIN_PASSWORD generada en .env (usuario: admin)"
+else
+  echo "GRAFANA_ADMIN_PASSWORD ya está en .env"
+fi
 
 cat <<MSG
 
 Listo. Siguientes pasos:
   docker compose -f deploy/docker-compose.yml up -d --build
   docker compose -f deploy/docker-compose.yml run --rm simulator load
+  # ver el motor en el navegador (Grafana en http://127.0.0.1:3000, usuario admin, contraseña en deploy/.env):
+  docker compose -f deploy/docker-compose.yml --profile observability up -d
   # token de prueba y consulta (ver docs/inicio-rapido.md):
   java -jar simulation/target/sched-simulation.jar token --key deploy/keys/private/$KID.key --kid $KID \\
     --student est-001 --courses MAT101,FIS101 --iss institucion-dev --aud sched-engine
