@@ -49,7 +49,27 @@ OBSERVE=${OBSERVE:-0}                # 1: añade Prometheus, Grafana y cAdvisor 
 K6_DASHBOARD=${K6_DASHBOARD:-0}      # 1: activa el panel web de k6 (127.0.0.1:5665) y exporta su reporte HTML
 export OBSERVE_CPUS=${OBSERVE_CPUS:-2,3}   # núcleos de Grafana, Prometheus y cAdvisor (no son del motor ni de k6)
 export GRAFANA_PORT=${GRAFANA_PORT:-3000}
+export PROMETHEUS_PORT=${PROMETHEUS_PORT:-9090}
 K6_DASHBOARD_PORT=${K6_DASHBOARD_PORT:-5665}
+
+# Falla antes de empezar si un puerto que hay que publicar ya está ocupado (otro programa u otro
+# despliegue del motor): docker compose dejaría ese contenedor en "Created" y la corrida seguiría sin él.
+port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
+check_port() {
+  if port_busy "$2"; then
+    echo "error: el puerto $2 ($1) ya está en uso en 127.0.0.1 (¿otra corrida o despliegue del motor?)." >&2
+    [ -n "${3:-}" ] && echo "       Libérelo o elija otro con $3=<puerto>." >&2
+    exit 1
+  fi
+}
+check_port "HTTP del balanceador" 18080
+if [ "$OBSERVE" = 1 ]; then
+  check_port Grafana "$GRAFANA_PORT" GRAFANA_PORT
+  check_port Prometheus "$PROMETHEUS_PORT" PROMETHEUS_PORT
+fi
+if [ "$K6_DASHBOARD" = 1 ]; then
+  check_port "panel de k6" "$K6_DASHBOARD_PORT" K6_DASHBOARD_PORT
+fi
 
 if [ "$MODE" = worst ]; then
   PREFIX=${PREFIX:-worst}
